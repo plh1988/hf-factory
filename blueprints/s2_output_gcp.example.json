@@ -1,0 +1,11 @@
+{
+  "_comment": "Stub of stage s2 output for GCP. Fill with the resources created by scripts/gcp_setup or the Infra engine.",
+  "project_id": "hf-ma-demo-01",
+  "region": "us-central1",
+  "alloydb": "projects/hf-ma-demo-01/locations/us-central1/clusters/alloy-ma-demo-01/instances/primary",
+  "bigquery_dataset": "hf-ma-demo-01:ma_demo_01_claims",
+  "docs_bucket": "ma-demo-01-docs",
+  "vector_index": "kb-ma-demo-01",
+  "pubsub_topic": "scenario-events",
+  "data_loader_job": "data-loader"
+}

@@ -1,0 +1,11 @@
+{
+  "_comment": "Stub of stage s2 output (Infra engine). In-memory targets for the memory profiles.",
+  "project_id": null,
+  "region": "local",
+  "alloydb": "memory://tables",
+  "bigquery_dataset": "memory://tables",
+  "docs_bucket": "memory://blobs",
+  "vector_index": "memory://vectors",
+  "pubsub_topic": "memory://events",
+  "data_loader_job": "local"
+}

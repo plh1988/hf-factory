@@ -1,0 +1,15 @@
+# Production GCP services. Resource names come from the s2 output JSON (${s2.<field>}).
+# The adapters are stubbed in v1: they have the final signatures and raise NotImplementedError.
+tables:     {kind: alloydb, instance: "${s2.alloydb}", database: factory, iam_auth: true}
+blobs:      {kind: gcs, bucket: "${s2.docs_bucket}"}
+vectors:    {kind: vertex_vector_search, index: "${s2.vector_index}"}
+events:     {kind: pubsub, topic: "${s2.pubsub_topic}"}
+text_cache: {kind: gcs, bucket: "${s2.docs_bucket}", prefix: cache/text}
+deployer:   {kind: cloud_run, region: "${s2.region}"}
+llm:
+  kind: vertex
+  project: "${s2.project_id}"
+  location: "${s2.region}"
+  model: gemini-2.5-flash
+  embedding_model: text-embedding-005
+  embedding_dim: 256

@@ -1,0 +1,15 @@
+# Everything in memory except Vertex AI.
+# Requires: gcloud auth application-default login, and a project with the Vertex AI API enabled.
+tables:     {kind: duckdb}
+blobs:      {kind: memory}
+vectors:    {kind: numpy}
+events:     {kind: log}
+text_cache: {kind: memory}
+deployer:   {kind: local, host: 127.0.0.1, port: 8080}
+llm:
+  kind: vertex
+  project: your-gcp-project-id        # set once
+  location: us-central1
+  model: gemini-2.5-flash             # pin to the model your project uses
+  embedding_model: text-embedding-005
+  embedding_dim: 256

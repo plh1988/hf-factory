@@ -1,0 +1,13 @@
+# Everything in memory, deterministic fake LLM. No cloud access needed.
+# Used by the test suite and for working without GCP credentials.
+tables:     {kind: duckdb}
+blobs:      {kind: memory}
+vectors:    {kind: numpy}
+events:     {kind: log}
+text_cache: {kind: memory}
+deployer:   {kind: local, host: 127.0.0.1, port: 8080}
+llm:
+  kind: offline
+  model: offline-template-v1
+  embedding_model: hashed-bow-v1
+  embedding_dim: 256
