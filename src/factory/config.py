@@ -47,6 +47,7 @@ class Profile(BaseModel):
     deployer: AdapterConfig
     llm: AdapterConfig
     executor: AdapterConfig = AdapterConfig(kind="local")
+    analytics: AdapterConfig = AdapterConfig(kind="tables")  # bigquery in the gcp profile
     limits: dict[str, int] = {}  # e.g. max_members / max_claims for in-memory profiles
 
 

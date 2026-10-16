@@ -67,6 +67,9 @@ expected outputs). The Postman collections change them in two documented ways: s
 | PPI payments | `GET /v1/claims/{id}/payments` | CO vs PR breakdown, recoupments, wrong-payee warning |
 | Common | `POST /v1/identity/verify`, `GET /v1/knowledge/search` | |
 
+Claims analytics: `GET /factory/runs/{tenant}/analytics/claims-summary` (claims by status, denials by category,
+monthly volumes, appeal outcomes) runs on BigQuery in the gcp profile and on the in-memory tables locally.
+
 Member-facing calls by a caregiver pass `on_behalf_of=<relationship_id>`; the authorization scope and consent
 dates are enforced (rule R-06). Write endpoints (PCP change, appointment, appeal) accept `dry_run=true`; s8's
 contract tests use it, so deploying never changes the validated data.
@@ -97,11 +100,11 @@ Gaps in the spec payloads and how they are filled (each reported in the response
 
 `FACTORY_PROFILE` is the only setting that differs between environments:
 
-| Profile | Tables | Blobs | Vectors | Events | LLM | Shard tasks | API runs on |
-|---|---|---|---|---|---|---|---|
-| `memory-offline` | DuckDB in memory | dict | NumPy | log | offline stand-in | in-process | same server |
-| `memory` | DuckDB in memory | dict | NumPy | log | **Vertex AI** | in-process | same server |
-| `gcp` | AlloyDB | Cloud Storage | Vertex AI Vector Search | Pub/Sub | Vertex AI | Cloud Run Job | Cloud Run + API Gateway |
+| Profile | Tables | Analytics | Blobs | Vectors | Events | LLM | Shard tasks | API runs on |
+|---|---|---|---|---|---|---|---|---|
+| `memory-offline` | DuckDB in memory | same tables | dict | NumPy | log | offline stand-in | in-process | same server |
+| `memory` | DuckDB in memory | same tables | dict | NumPy | log | **Vertex AI** | in-process | same server |
+| `gcp` | AlloyDB | BigQuery | Cloud Storage | Vertex AI Vector Search | Pub/Sub | Vertex AI | Cloud Run Job | Cloud Run + API Gateway |
 
 Only `factory/adapters/__init__.py` maps a profile to backends; `tests/test_portability.py` fails if engine code
 imports a backend library or reads the environment.
@@ -139,6 +142,7 @@ docker run --rm -p 8080:8080 hf-factory
 | Piece | Implementation |
 |---|---|
 | AlloyDB tables | AlloyDB Python Connector (pg8000, IAM auth); schema `t_<tenant>` per run; COPY into a staging table + `INSERT … ON CONFLICT` |
+| BigQuery | claims domain mirrored as it is generated: Parquet load into a staging table, then `MERGE` on the primary key (idempotent); tables partitioned by date and clustered by key |
 | Cloud Storage | objects under `gs://<bucket>/<tenant>/`; LLM text cache under `cache/text/` |
 | Vector Search | stream `upsert_datapoints` with tenant/audience restricts; `find_neighbors`; chunk metadata in GCS |
 | Pub/Sub | JSON events with tenant and stage attributes |
@@ -161,8 +165,8 @@ Resource names come from the s2 output (`config/s2_output_gcp.example.json` list
 ## Known gaps
 
 - MPA, MBP, MRX and PON (not in S1–S4) have no endpoints yet.
-- The GCP adapters, Cloud Run Job executor and deployer have not been run against a live project. BigQuery
-  (claims analytics) has no adapter yet. The control plane keeps run state in memory, so a restart loses it.
+- The GCP adapters (AlloyDB, BigQuery, Cloud Storage, Vector Search, Pub/Sub), the Cloud Run Job executor and the
+  deployer have not been run against a live project. The control plane keeps run state in memory, so a restart loses it.
 - API Gateway passes the Authorization header to the backend (`disable_auth`); the Cloud Run service must
   therefore allow invocation, so restrict ingress before production.
 - Privacy scan checks NPI Luhn validity but not real-NPI collisions (needs a pinned NPPES snapshot).

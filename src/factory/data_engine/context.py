@@ -87,6 +87,9 @@ class GenContext:
         if n or not self.stores.tables.exists(entity):
             # every generated entity exists afterwards, even with zero rows
             self.stores.tables.upsert(entity, table, catalog.PRIMARY_KEY[entity])
+        analytics = self.stores.analytics
+        if n and analytics is not None and analytics.wants(entity):  # e.g. claims mirrored to BigQuery
+            analytics.load(entity, table, catalog.PRIMARY_KEY[entity])
         self.counts[entity] = self.counts.get(entity, 0) + n
         self.checksums[entity] = (self.checksums.get(entity, 0) + checksum(table)) % (1 << 64)
         return table

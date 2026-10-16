@@ -114,3 +114,32 @@ def test_s8_endpoint_list_must_match_catalog():
     p["s8"]["endpoints"] = p["s8"]["endpoints"][:-1]
     r = c.post("/factory/api-engine/s8", json=p["s8"])
     assert r.status_code == 409 and r.json()["details"][0]["missing_from_payload"]
+
+
+def test_claims_are_mirrored_to_analytics_and_summarised():
+    """With a recording analytics store (stand-in for BigQuery) every claim entity is loaded, row for row."""
+    from factory.adapters.memory import TablesAnalyticsStore
+
+    class Recorder(TablesAnalyticsStore):
+        def __init__(self, tables):
+            super().__init__(tables)
+            self.rows = {}
+
+        def wants(self, entity):
+            return entity.startswith("claim_") or entity in ("appeal_record", "reprocessing_history")
+
+        def load(self, entity, rows, key):
+            self.rows[entity] = self.rows.get(entity, 0) + rows.num_rows
+
+    c, reg = new_client()
+    p = small_payloads(300, tenant="bq")
+    assert c.post("/factory/data-engine/s3", json=p["s3"]).status_code == 200
+    run = reg.runs["bq"]
+    run.stores.analytics = Recorder(run.stores.tables)
+    for st in ["s4", "s5", "s6", "s7"]:
+        assert c.post(f"/factory/data-engine/{st}", json=p[st]).status_code == 200
+    counts = c.get("/factory/runs/bq/manifest").json()["entity_counts"]
+    assert run.stores.analytics.rows and all(run.stores.analytics.rows[e] == counts[e] for e in run.stores.analytics.rows)
+    summary = c.get("/factory/runs/bq/analytics/claims-summary").json()
+    assert sum(r["claims"] for r in summary["by_status"]) == counts["claim_header"]
+    assert isinstance(summary["by_month"], list) and summary["denials_by_category"]

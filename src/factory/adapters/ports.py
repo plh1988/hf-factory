@@ -26,6 +26,17 @@ class TableStore(Protocol):
     def health(self) -> str: ...
 
 
+class AnalyticsStore(Protocol):
+    """Claims analytics (BigQuery in production). load() mirrors an entity's rows; query() runs analytics SQL."""
+
+    uri: str
+
+    def wants(self, entity: str) -> bool: ...
+    def load(self, entity: str, rows: pa.Table, key: str) -> None: ...
+    def query(self, sql: str, params: list[Any] | None = None) -> pa.Table: ...
+    def health(self) -> str: ...
+
+
 class BlobStore(Protocol):
     """Documents, reports, manifests (Cloud Storage in production)."""
 
@@ -83,4 +94,5 @@ class Stores:
     llm: LLMClient
     deployer: Any
     executor: Any = None
+    analytics: AnalyticsStore | None = None
     namespace: str | None = None

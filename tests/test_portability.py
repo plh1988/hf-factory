@@ -92,3 +92,17 @@ def test_gcp_profile_needs_s2_output(monkeypatch):
     monkeypatch.setenv("FACTORY_PROFILE", "gcp")
     with pytest.raises(ValueError):
         load_profile()
+
+
+def test_gcp_profile_mirrors_claims_to_bigquery(monkeypatch):
+    from factory.adapters.gcp import BigQueryAnalyticsStore, bigquery_create_sql, bigquery_merge_sql
+
+    monkeypatch.setenv("FACTORY_PROFILE", "gcp")
+    stores = build_stores(load_profile(s2=S2Output.load("config/s2_output_gcp.example.json")), namespace="ma-demo-01")
+    a = stores.analytics
+    assert isinstance(a, BigQueryAnalyticsStore)
+    assert (a.project, a.dataset) == ("hf-ma-demo-01", "ma_demo_01_claims")
+    assert a.wants("claim_header") and not a.wants("member_demographics")
+    merge = bigquery_merge_sql("p.d.claim_header", "p.d._stage", ["claim_id", "status", "total_paid"], "claim_id")
+    assert "ON T.`claim_id` = S.`claim_id`" in merge and "`claim_id` = S." not in merge.split("UPDATE SET")[1]
+    assert "PARTITION BY `service_from_dt`" in bigquery_create_sql("p.d.claim_header", "p.d.s", "claim_header", "claim_id")

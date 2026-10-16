@@ -22,6 +22,7 @@ dev = ["pytest>=8"]
 # Google Cloud clients for the gcp profile (always installed in the Docker image)
 gcp = [
     "google-cloud-storage>=2.16",
+    "google-cloud-bigquery>=3.20",
     "google-cloud-pubsub>=2.21",
     "google-cloud-run>=0.10",
     "google-cloud-aiplatform>=1.60",

@@ -33,6 +33,7 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
         "llm": {"offline": lambda c, ns: llm.OfflineLLM(c), "vertex": lambda c, ns: llm.VertexLLM(c)},
         "deployer": {"local": lambda c, ns: LocalDeployer(c), "cloud_run": CloudRunDeployer},
         "executor": {"local": LocalExecutor, "cloud_run_job": CloudRunJobExecutor},
+        "analytics": {"bigquery": gcp("BigQueryAnalyticsStore")},  # "tables" is built below: it needs the TableStore
     }
 
 
@@ -47,9 +48,16 @@ def build_stores(profile: Profile, namespace: str | None = None) -> Stores:
             raise ValueError(f"profile {profile.name!r}: unknown {port} kind {cfg.kind!r}") from None
         return factory(cfg, namespace)
 
+    tables = make("tables")
+    if profile.analytics.kind == "tables":
+        from factory.adapters.memory import TablesAnalyticsStore
+
+        analytics = TablesAnalyticsStore(tables)
+    else:
+        analytics = make("analytics")
     return Stores(
         profile=profile.name,
-        tables=make("tables"),
+        tables=tables,
         blobs=make("blobs"),
         vectors=make("vectors"),
         events=make("events"),
@@ -57,5 +65,6 @@ def build_stores(profile: Profile, namespace: str | None = None) -> Stores:
         llm=make("llm"),
         deployer=make("deployer"),
         executor=make("executor"),
+        analytics=analytics,
         namespace=namespace,
     )

@@ -9,6 +9,11 @@ tables:
   user: "${s2.db_user}"              # IAM database user (service account email without .gserviceaccount.com)
   iam_auth: true
   ip_type: PRIVATE
+analytics:                           # claims domain mirrored to BigQuery (spec: AlloyDB serving + BigQuery analytics)
+  kind: bigquery
+  project: "${s2.project_id}"
+  dataset: "${s2.bigquery_dataset}"  # project:dataset, one dataset per tenant
+  location: US
 blobs:      {kind: gcs, bucket: "${s2.docs_bucket}"}
 text_cache: {kind: gcs, bucket: "${s2.docs_bucket}", prefix: cache/text}
 vectors:

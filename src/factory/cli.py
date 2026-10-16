@@ -33,7 +33,7 @@ def cmd_doctor(args) -> int:
     profile, _ = _profile(args)
     stores = build_stores(profile)
     print(f"FACTORY_PROFILE = {profile.name}")
-    for port in ["tables", "blobs", "vectors", "events", "text_cache", "llm", "deployer"]:
+    for port in ["tables", "analytics", "blobs", "vectors", "events", "text_cache", "llm", "executor", "deployer"]:
         adapter = getattr(stores, port)
         try:
             status = adapter.health()

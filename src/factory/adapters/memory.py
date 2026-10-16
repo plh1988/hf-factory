@@ -152,3 +152,24 @@ class MemoryTextCache:
 
     def health(self) -> str:
         return f"ok (in-memory, {len(self._data)} entries)"
+
+
+class TablesAnalyticsStore:
+    """Analytics over the in-memory TableStore: nothing is mirrored (the data is already in DuckDB);
+    analytics queries run against the same tables."""
+
+    def __init__(self, tables: DuckDBTableStore) -> None:
+        self.tables = tables
+        self.uri = tables.uri
+
+    def wants(self, entity: str) -> bool:
+        return False
+
+    def load(self, entity: str, rows: pa.Table, key: str) -> None:
+        return None
+
+    def query(self, sql: str, params: list[Any] | None = None) -> pa.Table:
+        return self.tables.query(sql, params)
+
+    def health(self) -> str:
+        return "ok (analytics on the in-memory tables)"

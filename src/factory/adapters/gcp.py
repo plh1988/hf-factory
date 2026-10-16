@@ -328,3 +328,111 @@ class PubSubEventBus:
 
     def health(self) -> str:
         return f"ok (Pub/Sub {self._topic}; publishes on first event)"
+
+
+# ================================================================ BigQuery (claims analytics)
+CLAIM_ENTITIES = ["claim_header", "claim_line", "pharmacy_claim_detail", "claim_denial", "claim_pend", "claim_adjustment",
+                  "claim_payment", "appeal_record", "reprocessing_history", "member_accumulator"]
+PARTITION_BY = {"claim_header": "service_from_dt", "claim_payment": "payment_dt", "claim_denial": "denial_dt",
+                "claim_adjustment": "adjustment_dt", "claim_pend": "pend_dt", "appeal_record": "filed_dt"}
+
+
+def _bq_param_type(v: Any) -> str:
+    if isinstance(v, bool):
+        return "BOOL"
+    if isinstance(v, int):
+        return "INT64"
+    if isinstance(v, float):
+        return "FLOAT64"
+    if isinstance(v, Decimal):
+        return "NUMERIC"
+    if isinstance(v, datetime):
+        return "TIMESTAMP"
+    if isinstance(v, date):
+        return "DATE"
+    return "STRING"
+
+
+def bigquery_merge_sql(target: str, stage: str, columns: list[str], key: str) -> str:
+    """MERGE a staging table into the target on the primary key (idempotent re-runs)."""
+    sets = ", ".join(f"`{c}` = S.`{c}`" for c in columns if c != key)
+    return (f"MERGE `{target}` T USING `{stage}` S ON T.`{key}` = S.`{key}` "
+            f"WHEN MATCHED THEN UPDATE SET {sets} WHEN NOT MATCHED THEN INSERT ROW")
+
+
+def bigquery_create_sql(target: str, stage: str, entity: str, key: str) -> str:
+    """Create the target with the staging table's schema, partitioned by a date column and clustered by the key."""
+    part = f"PARTITION BY `{PARTITION_BY[entity]}` " if entity in PARTITION_BY else ""
+    return f"CREATE TABLE IF NOT EXISTS `{target}` {part}CLUSTER BY `{key}` AS SELECT * FROM `{stage}` LIMIT 0"
+
+
+class BigQueryAnalyticsStore:
+    """Claims analytics in BigQuery. Each write is loaded as Parquet into a staging table, then MERGEd into the
+    target on the primary key, so a re-run or retried task never duplicates rows.
+
+    Profile keys: project, dataset ('project:dataset' or 'dataset'), location (US), entities (default: claims domain),
+    table_prefix_by_tenant (false: the s2 dataset is already per tenant)."""
+
+    def __init__(self, cfg: AdapterConfig, namespace: str | None = None) -> None:
+        self.cfg = cfg
+        ds = str(cfg.get("dataset")).replace(":", ".")
+        self.project = cfg.get("project") or (ds.split(".")[0] if "." in ds else None)
+        self.dataset = ds.split(".")[-1]
+        self.location = cfg.get("location", "US")
+        self.entities = set(cfg.get("entities") or CLAIM_ENTITIES)
+        self.prefix = (_ns(namespace) + "__") if cfg.get("table_prefix_by_tenant") else ""
+        self.uri = f"bigquery://{self.project}.{self.dataset}"
+        self._client = None
+
+    @property
+    def client(self):
+        if self._client is None:  # connect on first use
+            from google.cloud import bigquery
+
+            self._client = bigquery.Client(project=self.project, location=self.location)
+        return self._client
+
+    def wants(self, entity: str) -> bool:
+        return entity in self.entities
+
+    def _table(self, name: str) -> str:
+        return f"{self.project}.{self.dataset}.{self.prefix}{name}"
+
+    def load(self, entity: str, rows: pa.Table, key: str) -> None:
+        if not rows.num_rows:
+            return
+        import uuid
+
+        import pyarrow.parquet as pq
+        from google.cloud import bigquery
+        from google.cloud.bigquery import format_options
+
+        buf = io.BytesIO()
+        pq.write_table(rows, buf)
+        buf.seek(0)
+        stage = self._table(f"_stage_{entity}_{uuid.uuid4().hex[:8]}")
+        parquet = format_options.ParquetOptions()
+        parquet.enable_list_inference = True
+        job = bigquery.LoadJobConfig(source_format=bigquery.SourceFormat.PARQUET,
+                                     write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE)
+        job.parquet_options = parquet
+        self.client.load_table_from_file(buf, stage, job_config=job).result()
+        try:
+            target = self._table(entity)
+            self.client.query(bigquery_create_sql(target, stage, entity, key)).result()
+            self.client.query(bigquery_merge_sql(target, stage, rows.column_names, key)).result()
+        finally:
+            self.client.delete_table(stage, not_found_ok=True)
+
+    def query(self, sql: str, params: list[Any] | None = None) -> pa.Table:
+        from google.cloud import bigquery
+
+        cfg = bigquery.QueryJobConfig(
+            default_dataset=f"{self.project}.{self.dataset}",
+            query_parameters=[bigquery.ScalarQueryParameter(None, _bq_param_type(v), v) for v in (params or [])],
+        )
+        return self.client.query(sql, job_config=cfg).result().to_arrow(create_bqstorage_client=False)
+
+    def health(self) -> str:
+        self.client.get_dataset(f"{self.project}.{self.dataset}")
+        return f"ok (BigQuery {self.project}.{self.dataset}, {len(self.entities)} entities mirrored)"

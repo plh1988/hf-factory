@@ -180,6 +180,33 @@ def create_control_app(registry: Registry) -> FastAPI:
         rows = run.stores.tables.query(f'SELECT * FROM "{entity}" {where} ORDER BY 1 LIMIT {limit}', params).to_pylist()
         return JSONResponse(json.loads(json.dumps({"entity": entity, "rows": rows}, default=str)))
 
+    # SQL valid in both DuckDB and BigQuery (aliases in GROUP BY, EXTRACT for dates)
+    summary_sql = {
+        "by_status": "SELECT status, count(*) AS claims, sum(total_billed) AS billed, sum(total_paid) AS paid, "
+                     "sum(member_resp) AS member_resp FROM claim_header GROUP BY status ORDER BY status",
+        "denials_by_category": "SELECT denial_category, carc, count(*) AS denials FROM claim_denial "
+                               "GROUP BY denial_category, carc ORDER BY denials DESC",
+        "by_month": "SELECT EXTRACT(YEAR FROM service_from_dt) AS yr, EXTRACT(MONTH FROM service_from_dt) AS mon, "
+                    "count(*) AS claims, sum(total_paid) AS paid FROM claim_header GROUP BY yr, mon ORDER BY yr, mon",
+        "appeals_by_outcome": "SELECT status, outcome, count(*) AS appeals FROM appeal_record GROUP BY status, outcome "
+                              "ORDER BY status, outcome",
+    }
+
+    @app.get("/factory/runs/{tenant}/analytics/claims-summary", tags=["Runs"],
+             summary="Claims analytics (BigQuery in the gcp profile, the in-memory tables locally)")
+    def claims_summary(tenant: str) -> Any:
+        try:
+            run = _run(tenant)
+        except JobRejected as exc:
+            return _rejected(exc)
+        out: dict[str, Any] = {"tenant": tenant, "source": run.stores.analytics.uri}
+        for name, sql in summary_sql.items():
+            try:
+                out[name] = run.stores.analytics.query(sql).to_pylist()
+            except Exception as exc:  # e.g. the table was not generated for this scenario
+                out[name] = {"unavailable": str(exc).splitlines()[0][:200]}
+        return JSONResponse(json.loads(json.dumps(out, default=str)))
+
     @app.get("/factory/runs/{tenant}/credentials", tags=["Runs"], summary="Local test credentials for the tenant API (memory profiles)")
     def get_credentials(tenant: str) -> Any:
         try:

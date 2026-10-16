@@ -56,6 +56,11 @@ class DataEngineRun:
 SHARDED = {"s4": s4_members, "s5": s5_claims_auth}
 
 
+def _loaded_to(stores, ents: list[str]) -> str:
+    mirrored = [e for e in ents if stores.analytics is not None and stores.analytics.wants(e)]
+    return stores.tables.uri + (f" + {stores.analytics.uri} ({len(mirrored)} entities)" if mirrored else "")
+
+
 def run_sharded(ctx: GenContext, stage: str) -> list[str]:
     """Run a member-sharded stage through the profile's job executor (in-process tasks, or a Cloud Run Job)."""
     mod = SHARDED[stage]
@@ -133,7 +138,7 @@ def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, ru
     res = StageResult(
         stage=stage, status="COMPLETED", duration_s=round(time.perf_counter() - t0, 2),
         entities=[EntityResult(entity=e, rows=ctx.counts.get(e, 0), checksum=fmt_checksum(ctx.checksums.get(e, 0))) for e in ents],
-        rule_checks=rule_checks, loaded_to=stores.tables.uri, **extra,
+        rule_checks=rule_checks, loaded_to=_loaded_to(stores, ents), **extra,
     )
     if rule_detail:
         res.rule_detail = rule_detail
