@@ -1,0 +1,346 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1040" width="1400" height="1040" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+  <title>HF Factory v1 architecture: REST control plane, Data Engine s3-s7, API Engine s8, ports and adapters</title>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#475569"/>
+    </marker>
+    <marker id="arr-pink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#db2777"/>
+    </marker>
+    <marker id="arr-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#0d9488"/>
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="cp" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef2ff"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="de" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdf2f8"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="ae" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0fdfa"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1400" height="1040" fill="#f4f5f8"/>
+
+  <!-- title banner -->
+  <rect x="20" y="16" width="1360" height="64" rx="14" fill="url(#hero)"/>
+  <text x="44" y="47" font-size="24" font-weight="800" fill="#ffffff">Healthcare AI Platform Factory · Data Engine + API Engine (v1)</text>
+  <text x="44" y="69" font-size="13" fill="#e0e7ff">Each stage runs from its own job payload · deterministic synthetic data · one environment variable switches local and GCP</text>
+
+  <!-- ===================== row 1: caller, control plane, agents ===================== -->
+  <!-- caller -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="104" width="250" height="112" rx="12" fill="#ffffff" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 4"/>
+  </g>
+  <circle cx="72" cy="134" r="16" fill="#e2e8f0"/>
+  <circle cx="72" cy="129" r="5.5" fill="#64748b"/>
+  <path d="M62 143 q10 -10 20 0" fill="#64748b"/>
+  <text x="98" y="131" font-size="15" font-weight="700" fill="#0f172a">Caller</text>
+  <text x="98" y="148" font-size="11.5" fill="#475569">stands in for the Orchestrator</text>
+  <text x="58" y="178" font-size="11.5" fill="#334155">• Postman collection (s3 → s8)</text>
+  <text x="58" y="196" font-size="11.5" fill="#334155">• curl / any HTTP client</text>
+
+  <!-- control plane -->
+  <g filter="url(#shadow)">
+    <rect x="340" y="104" width="720" height="112" rx="12" fill="url(#cp)" stroke="#4338ca" stroke-width="2"/>
+  </g>
+  <rect x="340" y="104" width="720" height="30" rx="12" fill="#4338ca"/>
+  <rect x="340" y="120" width="720" height="14" fill="#4338ca"/>
+  <text x="358" y="124" font-size="14" font-weight="800" fill="#ffffff" letter-spacing="0.5">REST CONTROL PLANE</text>
+  <text x="1044" y="124" font-size="11.5" fill="#c7d2fe" text-anchor="end">FastAPI · python -m factory serve · 127.0.0.1:8080</text>
+  <text x="358" y="155" font-size="12" fill="#1e1b4b" font-family="Consolas, Menlo, monospace">POST /factory/data-engine/s3 … /s7      POST /factory/api-engine/s8</text>
+  <text x="358" y="176" font-size="11.5" fill="#334155">Registry: one run per tenant (tenant from consumes.alloydb) · payload checks → 409 / 422 · stage order enforced</text>
+  <text x="358" y="197" font-size="12" fill="#1e1b4b" font-family="Consolas, Menlo, monospace">GET /factory/runs · /manifest · /rule-report · /tables/{entity} · /credentials</text>
+
+  <!-- agents -->
+  <g filter="url(#shadow)">
+    <rect x="1110" y="104" width="250" height="112" rx="12" fill="#ffffff" stroke="#7c3aed" stroke-width="1.5"/>
+  </g>
+  <rect x="1128" y="120" width="30" height="24" rx="6" fill="#ede9fe" stroke="#7c3aed"/>
+  <circle cx="1137" cy="132" r="2.5" fill="#7c3aed"/>
+  <circle cx="1149" cy="132" r="2.5" fill="#7c3aed"/>
+  <text x="1168" y="131" font-size="15" font-weight="700" fill="#0f172a">Agents &amp; testers</text>
+  <text x="1168" y="148" font-size="11.5" fill="#475569">call the tenant API</text>
+  <text x="1128" y="178" font-size="11.5" fill="#334155">• Dialogflow CX / Vertex agents</text>
+  <text x="1128" y="196" font-size="11.5" fill="#334155">• Swagger /docs · Postman</text>
+
+  <!-- caller → control plane -->
+  <path d="M290 160 H336" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="313" y="152" font-size="10.5" fill="#475569" text-anchor="middle">JSON</text>
+
+  <!-- ===================== row 2: data engine ===================== -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="252" width="860" height="290" rx="14" fill="url(#de)" stroke="#db2777" stroke-width="2"/>
+  </g>
+  <text x="62" y="282" font-size="15" font-weight="800" fill="#be185d" letter-spacing="0.5">DATA ENGINE · s3 → s7</text>
+  <text x="878" y="282" font-size="11.5" fill="#9d174d" text-anchor="end">payload-driven · per-row seeded · UUIDv5 ids · idempotent re-runs</text>
+
+  <!-- stage cards -->
+  <g font-size="11" fill="#334155">
+    <!-- s3 -->
+    <rect x="63" y="300" width="150" height="150" rx="10" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
+    <circle cx="85" cy="324" r="14" fill="#db2777"/>
+    <text x="85" y="328" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">s3</text>
+    <text x="106" y="329" font-size="13" font-weight="700" fill="#0f172a">Reference</text>
+    <text x="73" y="356" font-size="9" fill="#9d174d" font-family="Consolas, Menlo, monospace">generate_reference_data</text>
+    <text x="73" y="378">plans, providers,</text>
+    <text x="73" y="394">network, locations</text>
+    <rect x="71" y="414" width="134" height="22" rx="11" fill="#fce7f3"/>
+    <text x="138" y="429" font-size="10.5" fill="#9d174d" text-anchor="middle">R-04 · F-04 · P-02</text>
+
+    <!-- s4 -->
+    <rect x="230" y="300" width="150" height="150" rx="10" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
+    <circle cx="252" cy="324" r="14" fill="#db2777"/>
+    <text x="252" y="328" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">s4</text>
+    <text x="273" y="329" font-size="13" font-weight="700" fill="#0f172a">Members</text>
+    <text x="240" y="356" font-size="9" fill="#9d174d" font-family="Consolas, Menlo, monospace">generate_members</text>
+    <text x="240" y="378">members, enrollment,</text>
+    <text x="240" y="394">PCP, risk, gaps, SDOH</text>
+    <rect x="238" y="414" width="134" height="22" rx="11" fill="#fce7f3"/>
+    <text x="305" y="429" font-size="10.5" fill="#9d174d" text-anchor="middle">R-05 · R-06 · T-01</text>
+
+    <!-- s5 -->
+    <rect x="397" y="300" width="150" height="150" rx="10" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
+    <circle cx="419" cy="324" r="14" fill="#db2777"/>
+    <text x="419" y="328" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">s5</text>
+    <text x="440" y="329" font-size="13" font-weight="700" fill="#0f172a">Claims + auth</text>
+    <text x="407" y="356" font-size="9" fill="#9d174d" font-family="Consolas, Menlo, monospace">generate_claims_auth</text>
+    <text x="407" y="378">claims, lines, denials,</text>
+    <text x="407" y="394">pends, payments, auths</text>
+    <rect x="405" y="414" width="134" height="22" rx="11" fill="#fce7f3"/>
+    <text x="472" y="429" font-size="10.5" fill="#9d174d" text-anchor="middle">R-03 · F-01 · T-04 …</text>
+
+    <!-- s6 -->
+    <rect x="564" y="300" width="150" height="150" rx="10" fill="#ffffff" stroke="#f9a8d4" stroke-width="1.5"/>
+    <circle cx="586" cy="324" r="14" fill="#db2777"/>
+    <text x="586" y="328" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">s6</text>
+    <text x="607" y="329" font-size="13" font-weight="700" fill="#0f172a">Care + KB</text>
+    <text x="574" y="356" font-size="9" fill="#9d174d" font-family="Consolas, Menlo, monospace">generate_care_knowledge</text>
+    <text x="574" y="378">TOC cases, documents,</text>
+    <text x="574" y="394">chunks → vector index</text>
+    <rect x="572" y="414" width="134" height="22" rx="11" fill="#ede9fe"/>
+    <text x="639" y="429" font-size="10.5" fill="#6d28d9" text-anchor="middle">LLM + text cache</text>
+
+    <!-- s7 -->
+    <rect x="731" y="300" width="150" height="150" rx="10" fill="#ffffff" stroke="#db2777" stroke-width="2"/>
+    <circle cx="753" cy="324" r="14" fill="#be185d"/>
+    <text x="753" y="328" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">s7</text>
+    <text x="774" y="329" font-size="13" font-weight="700" fill="#0f172a">Validate</text>
+    <text x="741" y="356" font-size="9" fill="#9d174d" font-family="Consolas, Menlo, monospace">validate_and_scan</text>
+    <text x="741" y="378">120 rules + privacy</text>
+    <text x="741" y="394">manifest + checksums</text>
+    <rect x="739" y="414" width="134" height="22" rx="11" fill="#dcfce7"/>
+    <text x="806" y="429" font-size="10.5" fill="#15803d" text-anchor="middle">quality gate ✓</text>
+  </g>
+
+  <!-- stage arrows -->
+  <g stroke="#db2777" stroke-width="2" fill="none">
+    <path d="M213 362 H226" marker-end="url(#arr-pink)"/>
+    <path d="M380 362 H393" marker-end="url(#arr-pink)"/>
+    <path d="M547 362 H560" marker-end="url(#arr-pink)"/>
+    <path d="M714 362 H727" marker-end="url(#arr-pink)"/>
+  </g>
+
+  <!-- run spec strip -->
+  <rect x="63" y="468" width="818" height="56" rx="10" fill="#ffffff" stroke="#fbcfe8"/>
+  <text x="79" y="490" font-size="12" font-weight="700" fill="#9d174d">RunSpec (built from payloads)</text>
+  <text x="79" y="510" font-size="11" fill="#475569">s3 fixes seed · as_of_date · catalog 2.4.0 · tenant · later payloads add volumes, lob_mix, scenario_mix, entities</text>
+  <text x="866" y="490" font-size="11" fill="#475569" text-anchor="end">shards: index ranges, sequential in v1</text>
+
+  <!-- control plane → data engine -->
+  <path d="M560 216 V248" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="570" y="237" font-size="10.5" fill="#475569">s3 … s7 job payloads</text>
+
+  <!-- ===================== row 2: api engine ===================== -->
+  <g filter="url(#shadow)">
+    <rect x="940" y="252" width="420" height="290" rx="14" fill="url(#ae)" stroke="#0d9488" stroke-width="2"/>
+  </g>
+  <text x="962" y="282" font-size="15" font-weight="800" fill="#0f766e" letter-spacing="0.5">API ENGINE · s8</text>
+  <text x="1338" y="282" font-size="11.5" fill="#115e59" text-anchor="end">one pre-built backend</text>
+
+  <rect x="960" y="300" width="380" height="104" rx="10" fill="#ffffff" stroke="#5eead4" stroke-width="1.5"/>
+  <path d="M984 314 l-9 16 h8 l-4 14 l13 -19 h-8 l5 -11z" fill="#0d9488"/>
+  <text x="1002" y="329" font-size="13" font-weight="700" fill="#0f172a">api_generate_and_deploy</text>
+  <text x="976" y="352" font-size="11" fill="#334155">use_cases switch endpoints on · OpenAPI 3.1 + tools.json</text>
+  <text x="976" y="370" font-size="11" fill="#334155">OAuth2 client credentials · rate limit · fault injection</text>
+  <rect x="974" y="378" width="160" height="20" rx="10" fill="#ccfbf1"/>
+  <text x="1054" y="392" font-size="10.5" fill="#0f766e" text-anchor="middle">24 contract tests</text>
+  <rect x="1142" y="378" width="186" height="20" rx="10" fill="#ccfbf1"/>
+  <text x="1235" y="392" font-size="10.5" fill="#0f766e" text-anchor="middle">tenant, seed from s7 manifest</text>
+
+  <path d="M1150 404 V420" stroke="#0d9488" stroke-width="2" fill="none" marker-end="url(#arr-teal)"/>
+  <text x="1160" y="416" font-size="10" fill="#0f766e">mount after DEPLOYED</text>
+
+  <rect x="960" y="424" width="380" height="108" rx="10" fill="#0f766e"/>
+  <text x="976" y="444" font-size="13" font-weight="700" fill="#ffffff">Tenant API (same server)</text>
+  <g font-family="Consolas, Menlo, monospace" font-size="10.5" fill="#ccfbf1">
+    <text x="976" y="461">POST /oauth/token        GET /docs</text>
+    <text x="976" y="476">GET  /v1/claims/{id}/status</text>
+    <text x="976" y="491">GET  /v1/authorizations/{id}/status</text>
+    <text x="976" y="506">POST /v1/authorizations/{id}/documents</text>
+    <text x="976" y="521">POST /v1/eligibility/verify  /v1/identity/verify</text>
+  </g>
+  <text x="1326" y="444" font-size="10" fill="#99f6e4" text-anchor="end">+ GET /v1/knowledge/search</text>
+
+  <!-- control plane → api engine -->
+  <path d="M1000 216 V248" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="1010" y="237" font-size="10.5" fill="#475569">s8 payload</text>
+
+  <!-- s7 → s8 -->
+  <path d="M881 340 H920 V330 H956" stroke="#0d9488" stroke-width="2" fill="none" marker-end="url(#arr-teal)" stroke-dasharray="6 4"/>
+  <text x="905" y="322" font-size="10" fill="#0f766e" text-anchor="middle">manifest</text>
+
+  <!-- agents → tenant API -->
+  <path d="M1352 216 V474 H1344" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+
+  <!-- ===================== row 3: ports and adapters ===================== -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="580" width="1320" height="210" rx="14" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
+  </g>
+  <text x="62" y="610" font-size="15" font-weight="800" fill="#1e293b" letter-spacing="0.5">PORTS &amp; ADAPTERS</text>
+  <text x="250" y="610" font-size="12" fill="#475569">engines call only these interfaces · a test fails if engine code imports a backend</text>
+  <g font-size="10.5">
+    <rect x="1000" y="597" width="12" height="12" rx="3" fill="#16a34a"/><text x="1018" y="607" fill="#166534">memory profiles</text>
+    <rect x="1124" y="597" width="12" height="12" rx="3" fill="#1a73e8"/><text x="1142" y="607" fill="#1e40af">gcp profile (stubbed)</text>
+  </g>
+
+  <!-- chips: x = 60 + i*184, width 172 -->
+  <g font-size="11">
+    <!-- TableStore -->
+    <rect x="60" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <ellipse cx="80" cy="646" rx="9" ry="3.5" fill="#94a3b8"/><rect x="71" y="646" width="18" height="12" fill="#94a3b8"/><ellipse cx="80" cy="658" rx="9" ry="3.5" fill="#64748b"/>
+    <text x="96" y="656" font-size="13" font-weight="700" fill="#0f172a">TableStore</text>
+    <text x="72" y="682" fill="#64748b">serving + analytics tables</text>
+    <rect x="70" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="78" y="713" fill="#166534">DuckDB in memory</text>
+    <rect x="70" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="78" y="749" fill="#1e40af">AlloyDB (+ BigQuery)</text>
+
+    <!-- BlobStore -->
+    <rect x="244" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <path d="M256 640 h12 l4 4 h14 v16 h-30z" fill="#94a3b8"/>
+    <text x="294" y="656" font-size="13" font-weight="700" fill="#0f172a">BlobStore</text>
+    <text x="256" y="682" fill="#64748b">docs, reports, manifest</text>
+    <rect x="254" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="262" y="713" fill="#166534">dict in memory</text>
+    <rect x="254" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="262" y="749" fill="#1e40af">Cloud Storage</text>
+
+    <!-- VectorIndex -->
+    <rect x="428" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <circle cx="444" cy="644" r="3" fill="#64748b"/><circle cx="456" cy="652" r="3" fill="#64748b"/><circle cx="446" cy="658" r="3" fill="#94a3b8"/><circle cx="460" cy="641" r="3" fill="#94a3b8"/>
+    <text x="472" y="656" font-size="13" font-weight="700" fill="#0f172a">VectorIndex</text>
+    <text x="440" y="682" fill="#64748b">knowledge chunk search</text>
+    <rect x="438" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="446" y="713" fill="#166534">NumPy cosine</text>
+    <rect x="438" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="446" y="749" fill="#1e40af">Vertex Vector Search</text>
+
+    <!-- EventBus -->
+    <rect x="612" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <path d="M624 650 h10 M624 645 h16 M624 655 h16" stroke="#64748b" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="648" y="656" font-size="13" font-weight="700" fill="#0f172a">EventBus</text>
+    <text x="624" y="682" fill="#64748b">stage progress events</text>
+    <rect x="622" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="630" y="713" fill="#166534">log</text>
+    <rect x="622" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="630" y="749" fill="#1e40af">Pub/Sub</text>
+
+    <!-- TextCache -->
+    <rect x="796" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <rect x="808" y="640" width="20" height="20" rx="4" fill="none" stroke="#64748b" stroke-width="2"/><text x="818" y="655" font-size="10" font-weight="800" fill="#64748b" text-anchor="middle">#</text>
+    <text x="836" y="656" font-size="13" font-weight="700" fill="#0f172a">TextCache</text>
+    <text x="808" y="682" fill="#64748b">LLM text by sha256 key</text>
+    <rect x="806" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="814" y="713" fill="#166534">dict in memory</text>
+    <rect x="806" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="814" y="749" fill="#1e40af">Cloud Storage</text>
+
+    <!-- LLMClient -->
+    <rect x="980" y="626" width="172" height="146" rx="10" fill="#faf5ff" stroke="#c4b5fd"/>
+    <path d="M1000 640 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#7c3aed"/>
+    <text x="1020" y="656" font-size="13" font-weight="700" fill="#0f172a">LLMClient</text>
+    <text x="992" y="682" fill="#64748b">text + embeddings</text>
+    <rect x="990" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="998" y="713" fill="#166534">offline stand-in / Vertex</text>
+    <rect x="990" y="730" width="152" height="30" rx="7" fill="#ede9fe"/><text x="998" y="749" fill="#6d28d9">Vertex AI (Gemini)</text>
+
+    <!-- Deployer -->
+    <rect x="1164" y="626" width="172" height="146" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <path d="M1184 662 l8 -22 l8 22 z" fill="#94a3b8"/><rect x="1189" y="650" width="6" height="12" fill="#64748b"/>
+    <text x="1208" y="656" font-size="13" font-weight="700" fill="#0f172a">Deployer</text>
+    <text x="1176" y="682" fill="#64748b">where the API runs (s8)</text>
+    <rect x="1174" y="694" width="152" height="30" rx="7" fill="#dcfce7"/><text x="1182" y="713" fill="#166534">in-process uvicorn</text>
+    <rect x="1174" y="730" width="152" height="30" rx="7" fill="#dbeafe"/><text x="1182" y="749" fill="#1e40af">Cloud Run + Gateway</text>
+  </g>
+
+  <!-- engines → ports -->
+  <path d="M470 542 V576" stroke="#db2777" stroke-width="2" fill="none" marker-end="url(#arr-pink)"/>
+  <path d="M1150 542 V576" stroke="#0d9488" stroke-width="2" fill="none" marker-end="url(#arr-teal)"/>
+
+  <!-- ===================== row 4: profile switch and runtimes ===================== -->
+  <!-- switch -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="830" width="300" height="150" rx="14" fill="#1e293b"/>
+  </g>
+  <text x="60" y="860" font-size="12" fill="#94a3b8">.env</text>
+  <text x="60" y="886" font-size="19" font-weight="800" fill="#ffffff" font-family="Consolas, Menlo, monospace">FACTORY_PROFILE</text>
+  <rect x="60" y="902" width="118" height="26" rx="13" fill="#16a34a"/><text x="119" y="919" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">memory-offline</text>
+  <rect x="186" y="902" width="72" height="26" rx="13" fill="#22c55e"/><text x="222" y="919" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">memory</text>
+  <rect x="266" y="902" width="56" height="26" rx="13" fill="#1a73e8"/><text x="294" y="919" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">gcp</text>
+  <text x="60" y="958" font-size="11.5" fill="#cbd5e1">one line picks every adapter</text>
+
+  <!-- local runtime -->
+  <g filter="url(#shadow)">
+    <rect x="370" y="830" width="400" height="150" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  </g>
+  <text x="390" y="860" font-size="14" font-weight="800" fill="#166534">LOCAL RUNTIME · v1 (implemented)</text>
+  <g font-size="11.5" fill="#14532d">
+    <text x="390" y="886">• one Python process on 127.0.0.1:8080</text>
+    <text x="390" y="906">• in-memory DuckDB, dicts, NumPy index, logs</text>
+    <text x="390" y="926">• memory-offline: deterministic fake LLM (tests)</text>
+    <text x="390" y="946">• memory: real Vertex AI for text + embeddings</text>
+    <text x="390" y="966">• data regenerates identically after a restart</text>
+  </g>
+
+  <!-- vertex -->
+  <g filter="url(#shadow)">
+    <rect x="800" y="830" width="230" height="150" rx="14" fill="#faf5ff" stroke="#7c3aed" stroke-width="2"/>
+  </g>
+  <path d="M826 846 l4 9 l9 4 l-9 4 l-4 9 l-4 -9 l-9 -4 l9 -4z" fill="#7c3aed"/>
+  <text x="846" y="864" font-size="14" font-weight="800" fill="#6d28d9">VERTEX AI</text>
+  <g font-size="11.5" fill="#4c1d95">
+    <text x="820" y="892">Gemini (temperature 0)</text>
+    <text x="820" y="912">text embeddings</text>
+    <text x="820" y="932">used by memory and gcp</text>
+    <text x="820" y="952">auth: ADC (gcloud)</text>
+  </g>
+
+  <!-- gcp -->
+  <g filter="url(#shadow)">
+    <rect x="1060" y="830" width="300" height="150" rx="14" fill="#eff6ff" stroke="#1a73e8" stroke-width="2"/>
+  </g>
+  <text x="1080" y="860" font-size="14" font-weight="800" fill="#1e40af">GOOGLE CLOUD · gcp profile</text>
+  <g font-size="11.5" fill="#1e3a8a">
+    <text x="1080" y="886">AlloyDB · BigQuery · Cloud Storage</text>
+    <text x="1080" y="906">Vertex Vector Search · Pub/Sub</text>
+    <text x="1080" y="926">Cloud Run · API Gateway · Secret Manager</text>
+    <text x="1080" y="946">names from the s2 output JSON</text>
+  </g>
+  <rect x="1080" y="954" width="196" height="18" rx="9" fill="#fef3c7"/>
+  <text x="1178" y="967" font-size="10.5" fill="#92400e" text-anchor="middle">adapters stubbed in v1</text>
+
+  <!-- ports → runtimes -->
+  <g stroke="#475569" stroke-width="1.5" fill="none" stroke-dasharray="4 4">
+    <path d="M190 790 V826" marker-end="url(#arr)"/>
+    <path d="M570 790 V826" marker-end="url(#arr)"/>
+    <path d="M915 790 V826" marker-end="url(#arr)"/>
+    <path d="M1210 790 V826" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- footer -->
+  <text x="40" y="1012" font-size="11" fill="#64748b">Stage order: s3 → s4 → s5 → s6 → s7 → s8 (v1 runs s6 after s5: care records and denial links need claims). Every row is synthetic and stamped with tenant_id and scenario_id.</text>
+  <text x="40" y="1029" font-size="11" fill="#64748b">Repo: hf-factory · src/factory/control (REST) · data_engine (s3–s7) · api_engine (s8) · adapters (ports) · config/*.yaml (profiles)</text>
+</svg>

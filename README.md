@@ -7,6 +7,8 @@ example Postman.
 
 All data is synthetic. Infrastructure target is GCP; v1 runs fully in memory.
 
+![Architecture: REST control plane, Data Engine s3-s7, API Engine s8, ports and adapters, runtimes](docs/architecture.svg)
+
 ## Quick start (Windows)
 
 ```bash
