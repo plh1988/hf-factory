@@ -9,6 +9,8 @@ All data is synthetic. Infrastructure target is GCP; locally everything runs in 
 
 ![Architecture: REST control plane, Data Engine s3-s7, API Engine s8, ports and adapters, runtimes](docs/architecture.svg)
 
+Design documents: [Data Engine](docs/data-engine-design.md) · [API Engine](docs/api-engine-design.md)
+
 ## Quick start (Windows)
 
 ```bash
