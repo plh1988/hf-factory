@@ -24,6 +24,8 @@ ProfileName = Literal["memory", "memory-offline", "gcp"]
 
 class Settings(BaseSettings):
     profile: ProfileName = "memory-offline"
+    s2_json: str | None = None  # FACTORY_S2_JSON: s2 output inline (Cloud Run tasks/services get it this way)
+    config_dir: Path | None = None  # FACTORY_CONFIG_DIR: where profile yaml files live when installed (e.g. /app/config)
     model_config = SettingsConfigDict(env_prefix="FACTORY_", env_file=REPO_ROOT / ".env", extra="ignore")
 
 
@@ -44,9 +46,11 @@ class Profile(BaseModel):
     text_cache: AdapterConfig
     deployer: AdapterConfig
     llm: AdapterConfig
+    executor: AdapterConfig = AdapterConfig(kind="local")
+    limits: dict[str, int] = {}  # e.g. max_members / max_claims for in-memory profiles
 
 
-_PLACEHOLDER = re.compile(r"\$\{s2\.([a-z_]+)\}")
+_PLACEHOLDER = re.compile(r"\$\{s2\.([a-z_]+)\}")  # ${s2.__json__} = the whole s2 output
 
 
 def _resolve(value: Any, s2: S2Output | None) -> Any:
@@ -56,13 +60,14 @@ def _resolve(value: Any, s2: S2Output | None) -> Any:
     if isinstance(value, str) and _PLACEHOLDER.search(value):
         if s2 is None:
             raise ValueError(f"profile needs an s2 output to resolve {value!r}")
-        return _PLACEHOLDER.sub(lambda m: str(getattr(s2, m.group(1))), value)
+        return _PLACEHOLDER.sub(lambda m: s2.model_dump_json() if m.group(1) == "__json__" else str(getattr(s2, m.group(1))), value)
     return value
 
 
 def load_profile(name: str | None = None, s2: S2Output | None = None) -> Profile:
-    name = name or Settings().profile
-    path = CONFIG_DIR / f"{name}.yaml"
+    settings = Settings()
+    name = name or settings.profile
+    path = (settings.config_dir or CONFIG_DIR) / f"{name}.yaml"
     if not path.exists():
         raise FileNotFoundError(f"no profile file {path}")
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))

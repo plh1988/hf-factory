@@ -33,7 +33,10 @@ PRIMARY_KEY: dict[str, str] = {
     "claim_payment": "payment_id", "appeal_record": "appeal_id", "reprocessing_history": "reprocess_id",
     "auth_request": "auth_id", "auth_line": "auth_line_id", "auth_determination": "determination_id",
     "clinical_review_queue": "queue_id", "documentation_requirement": "req_id",
-    "care_case": "case_id", "transition_of_care": "toc_id",
+    "availability_schedule": "schedule_id", "provider_rating": "rating_id", "access_standard": "standard_id",
+    "care_case": "case_id", "transition_of_care": "toc_id", "care_plan": "care_plan_id",
+    "disease_program_enrollment": "enrollment_id", "risk_cohort": "cohort_id",
+    "outreach_campaign": "campaign_id", "outreach_history": "outreach_id",
     "knowledge_asset": "asset_id", "asset_chunk": "chunk_id", "faq_entry": "faq_id", "agent_sop": "sop_id",
     "asset_link": "link_id", "qa_golden": "qa_id",
 }
@@ -44,14 +47,16 @@ IMPLEMENTED = set(PRIMARY_KEY)
 # Which stage generates which entity. v1 runs s6 after s5 (design doc, gap 1) and derives
 # member_accumulator in s5 from paid claims (gap 2).
 STAGE_ENTITIES: dict[str, list[str]] = {
-    "s3": ["plan", "provider", "network_participation", "practice_location"],
+    "s3": ["plan", "provider", "network_participation", "practice_location", "availability_schedule",
+           "provider_rating", "access_standard"],
     "s4": ["member_demographics", "family_relationship", "plan_enrollment", "pcp_assignment",
            "risk_score", "care_gap", "sdoh_indicator"],
     "s5": ["claim_header", "claim_line", "pharmacy_claim_detail", "claim_denial", "claim_pend",
            "claim_adjustment", "claim_payment", "appeal_record", "reprocessing_history",
            "auth_request", "auth_line", "auth_determination", "clinical_review_queue",
            "documentation_requirement", "member_accumulator"],
-    "s6": ["care_case", "transition_of_care", "knowledge_asset", "asset_chunk", "faq_entry",
+    "s6": ["care_case", "transition_of_care", "care_plan", "disease_program_enrollment", "risk_cohort",
+           "outreach_campaign", "outreach_history", "knowledge_asset", "asset_chunk", "faq_entry",
            "agent_sop", "asset_link", "qa_golden"],
 }
 
@@ -101,6 +106,83 @@ USE_CASES: dict[str, dict] = {
     },
 }
 
+USE_CASES.update({
+    "MBN": {
+        "name": "Benefits navigation", "group": "member", "personas": ["MEDICARE", "MEDICAID", "COMMERCIAL", "CAREGIVER"],
+        "can": ["Quote copay, coinsurance, deductible and out-of-pocket status", "Explain allowances and covered services",
+                "Cite the plan summary"],
+        "escalate": ["Eligibility disputes", "Grievances", "Coverage exceptions"],
+        "never": ["Promise coverage", "Interpret legal terms", "Disclose beyond the verified scope"],
+        "verification": ["name", "date of birth", "member ID"], "handoff_queue": "MEMBER_SERVICES",
+        "faqs": [["How much is a specialist visit?", "What do I pay to see a specialist?"],
+                 ["How much of my deductible have I met?", "Where am I on my deductible?"],
+                 ["Is transportation to appointments covered?", "Can I get a ride to my doctor?"]],
+    },
+    "MCI": {
+        "name": "Claims inquiry", "group": "member", "personas": ["MEDICARE", "MEDICAID", "COMMERCIAL", "CAREGIVER"],
+        "can": ["Report claim status", "Explain allowed, paid and member responsibility", "Explain denial reasons"],
+        "escalate": ["Surprise-bill disputes", "Payment integrity", "Suspected errors above threshold"],
+        "never": ["Reprocess or override claims", "Promise payment", "Give legal advice"],
+        "verification": ["name", "date of birth", "member ID"], "handoff_queue": "CLAIMS_MEMBER",
+        "faqs": [["Why do I owe this amount?", "Explain my EOB."],
+                 ["Why was my claim denied?", "What does this denial mean for me?"],
+                 ["Why do I see two versions of the same claim?", "Why does my claim show as adjusted?"]],
+    },
+    "MPS": {
+        "name": "Provider search", "group": "member", "personas": ["MEDICARE", "MEDICAID", "COMMERCIAL", "CAREGIVER"],
+        "can": ["Search the directory by specialty, distance, language and accessibility", "Show ratings and next availability"],
+        "escalate": ["Network adequacy complaints", "No in-network option within the access standard"],
+        "never": ["Recommend clinically", "Recommend a termed or pending provider", "Share unverified information"],
+        "verification": ["member ID"], "handoff_queue": "NETWORK_SUPPORT",
+        "faqs": [["Find an in-network cardiologist near me.", "Who are the cardiologists in my network?"],
+                 ["I need a Spanish-speaking pediatrician.", "Is there a pediatrician who speaks Spanish?"],
+                 ["Which offices are wheelchair accessible?", "I need an accessible clinic."]],
+    },
+    "MPC": {
+        "name": "PCP change", "group": "member", "personas": ["MEDICARE", "MEDICAID", "COMMERCIAL", "CAREGIVER"],
+        "can": ["Validate the new PCP", "Apply the change with an effective date", "Send confirmation"],
+        "escalate": ["Continuity-of-care exceptions", "County restrictions with no alternative"],
+        "never": ["Change PCP without verification", "Assign a closed-panel PCP"],
+        "verification": ["name", "date of birth", "member ID"], "handoff_queue": "MEMBER_SERVICES",
+        "faqs": [["I want to change my primary care doctor.", "How do I switch my PCP?"],
+                 ["My doctor left the network, what now?", "Why was I assigned a new PCP?"],
+                 ["When does my PCP change take effect?", "What is the effective date of the change?"]],
+    },
+    "MAS": {
+        "name": "Appointment scheduling", "group": "member", "personas": ["MEDICARE", "MEDICAID", "COMMERCIAL", "CAREGIVER"],
+        "can": ["Show next available slots", "Book visit types", "Suggest telehealth", "Bundle care-gap visits"],
+        "escalate": ["No slot within the wait standard", "Urgent symptoms"],
+        "never": ["Triage symptoms", "Book with non-participating providers"],
+        "verification": ["name", "date of birth", "member ID"], "handoff_queue": "SCHEDULING",
+        "faqs": [["When is the next appointment with my doctor?", "Can I see my PCP this week?"],
+                 ["Can I book my annual wellness visit?", "I need a checkup."],
+                 ["Is there a telehealth option?", "Can I do a video visit?"]],
+    },
+    "PAP": {
+        "name": "Appeals", "group": "provider", "personas": ["BILLING", "OFFICE", "DISCHARGE"],
+        "can": ["Open appeals", "List documents and deadlines", "Report status and decision", "Show reprocessing history"],
+        "escalate": ["Late filings", "Bulk or systemic denials", "External review requests"],
+        "never": ["Predict outcomes", "Waive deadlines"],
+        "verification": ["NPI", "TIN", "claim ID"], "handoff_queue": "APPEALS",
+        "faqs": [["How do I appeal this denial?", "Can I start an appeal?"],
+                 ["What is the status of my appeal?", "Has the appeal been decided?"],
+                 ["The appeal was overturned, when will it be reprocessed?", "When will the claim be paid after the appeal?"]],
+    },
+    "PPI": {
+        "name": "Payment inquiry", "group": "provider", "personas": ["BILLING", "OFFICE", "DISCHARGE"],
+        "can": ["Give payment date, amount, method and trace", "Explain adjustments and offsets"],
+        "escalate": ["Misdirected payments", "Wrong payee", "Disputed recoupments"],
+        "never": ["Change payment instructions", "Issue payments"],
+        "verification": ["NPI", "TIN", "claim ID"], "handoff_queue": "PROVIDER_PAYMENTS",
+        "faqs": [["When was this claim paid?", "What is the EFT trace number?"],
+                 ["Why was I paid less than billed?", "Explain the adjustments."],
+                 ["Why was money taken back from my payment?", "What is this recoupment?"]],
+    },
+})
+
+# Scope a caregiver's authorization_scope must cover for a member-facing use case (rule R-06)
+CAREGIVER_SCOPE = {"MBN": "BENEFITS", "MCI": "CLAIMS", "MPC": "PCP_CHANGE", "MAS": "APPOINTMENTS", "MBP": "BILLING", "MPA": "PA_STATUS"}
+
 # Scenario facts the generator enforces (S1 use cases). Others fall back to baseline data.
 SCENARIOS: dict[str, dict] = {
     "PCS-01": {"anchor": "claim", "type": "happy", "title": "Status by claim number", "claim_status": "PAID"},
@@ -123,8 +205,53 @@ SCENARIOS: dict[str, dict] = {
     "PEV-04": {"anchor": "member", "type": "compliance", "title": "Bulk lookup attempt (API-level)"},
 }
 
+SCENARIOS.update({
+    # member-anchored (s4)
+    "MBN-01": {"anchor": "member", "type": "happy", "title": "Cost of a specialist visit"},
+    "MBN-02": {"anchor": "member", "type": "edge", "title": "OTC and dental allowance"},
+    "MBN-03": {"anchor": "member", "type": "edge", "title": "Transportation benefit with a transport need"},
+    "MBN-04": {"anchor": "member", "type": "compliance", "title": "Caregiver outside authorized scope", "caregiver_scope": ["BENEFITS"]},
+    "MPS-01": {"anchor": "member", "type": "happy", "title": "In-network specialist search"},
+    "MPS-02": {"anchor": "member", "type": "edge", "title": "Spanish-speaking pediatrician in a rural area"},
+    "MPS-03": {"anchor": "member", "type": "edge", "title": "Accessible specialist"},
+    "MPS-04": {"anchor": "member", "type": "data", "title": "Directory vs participation mismatch (API-level)"},
+    "MPC-01": {"anchor": "member", "type": "happy", "title": "Standard PCP change"},
+    "MPC-02": {"anchor": "member", "type": "edge", "title": "PCP terminated and auto-assigned", "pcp_switch": "PROVIDER_TERMED"},
+    "MPC-03": {"anchor": "member", "type": "edge", "title": "Moved counties", "pcp_switch": "MOVED"},
+    "MPC-04": {"anchor": "member", "type": "compliance", "title": "Caregiver without PCP-change scope", "caregiver_scope": ["APPOINTMENTS"]},
+    "MAS-01": {"anchor": "member", "type": "happy", "title": "Sick visit next available"},
+    "MAS-02": {"anchor": "member", "type": "edge", "title": "Wellness visit with open care gaps and transport need"},
+    "MAS-03": {"anchor": "member", "type": "compliance", "title": "No availability within the wait standard (API-level)"},
+    "MAS-04": {"anchor": "member", "type": "data", "title": "Stale availability schedule (provider data)"},
+    # claim-anchored (s5)
+    "MCI-01": {"anchor": "claim", "type": "happy", "title": "EOB explanation", "claim_status": "PAID"},
+    "MCI-02": {"anchor": "claim", "type": "edge", "title": "Denied for missing authorization (CO-197)",
+               "claim_status": "DENIED", "denial_category": "AUTH"},
+    "MCI-03": {"anchor": "claim", "type": "edge", "title": "Pended for coordination of benefits",
+               "claim_status": "PENDED", "pend_reason": "COB_INFO"},
+    "MCI-04": {"anchor": "claim", "type": "data", "title": "Original and reprocessed claim both visible", "claim_status": "PAID"},
+    "PAP-01": {"anchor": "claim", "type": "happy", "title": "Start a claim appeal", "claim_status": "DENIED",
+               "denial_category": "MED_NECESSITY"},
+    "PAP-02": {"anchor": "claim", "type": "edge", "title": "Appeal status", "claim_status": "DENIED", "denial_category": "MED_NECESSITY"},
+    "PAP-03": {"anchor": "claim", "type": "edge", "title": "Appeal overturned, awaiting reprocessing", "claim_status": "DENIED",
+               "denial_category": "MED_NECESSITY"},
+    "PAP-04": {"anchor": "claim", "type": "compliance", "title": "Deadline passed", "claim_status": "DENIED",
+               "denial_category": "MED_NECESSITY"},
+    "PPI-01": {"anchor": "claim", "type": "happy", "title": "Payment date and trace", "claim_status": "PAID"},
+    "PPI-02": {"anchor": "claim", "type": "edge", "title": "Paid less than billed", "claim_status": "PAID"},
+    "PPI-03": {"anchor": "claim", "type": "edge", "title": "Recoupment offset", "claim_status": "PAID"},
+    "PPI-04": {"anchor": "claim", "type": "data", "title": "Payment to wrong TIN", "claim_status": "PAID"},
+})
+
+# Claim scenarios whose recipe forces a professional, in-network, non-emergency claim
+# Happy-path claim scenarios are not forced: the tag stays only on claims that end in the recipe's status
+# (PAP-01 also needs an appealable denial); otherwise the claim is BASE. This keeps the payload's denial rate.
+HAPPY_CLAIM_SCENARIOS = {"PCS-01", "MCI-01", "PPI-01", "PPI-02", "PAP-01"}
+FORCED_CLAIM_SCENARIOS = {sid for sid, sc in SCENARIOS.items() if sc["anchor"] == "claim" and sid not in HAPPY_CLAIM_SCENARIOS}
+
 # Dirty-data tags (Q-02): rows that break a rule on purpose, exempted by name in s7.
 DQ_STALE_DIRECTORY = "DQ-STALE-DIRECTORY"
+DQ_STALE_SCHEDULE = "DQ-STALE-SCHEDULE"
 
 # ---------------------------------------------------------------- distributions
 LOB_PERSONA = {"MEDICARE_ADV": "MEDICARE", "MEDICAID_MCO": "MEDICAID", "COMMERCIAL": "COMMERCIAL"}
@@ -190,7 +317,7 @@ NDC = [
 TIER_COPAY_USD = {1: 0, 2: 10, 3: 45, 4: 100, 5: 150}
 
 TAXONOMY = {
-    "PCP": [("207Q00000X", "Family Medicine"), ("207R00000X", "Internal Medicine")],
+    "PCP": [("207Q00000X", "Family Medicine"), ("207R00000X", "Internal Medicine"), ("208000000X", "Pediatrics")],
     "SPECIALIST": [("207RC0000X", "Cardiovascular Disease"), ("207X00000X", "Orthopaedic Surgery"),
                    ("2085R0202X", "Diagnostic Radiology"), ("225100000X", "Physical Therapist")],
     "FACILITY": [("282N00000X", "General Acute Care Hospital"), ("314000000X", "Skilled Nursing Facility"),

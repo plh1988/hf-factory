@@ -1,0 +1,608 @@
+{
+  "info": {
+    "name": "HF Factory - S4 sandbox (Commercial)",
+    "description": "Data Engine s3-s7 then API Engine s8 for tenant sandbox-04. Start the server with `python -m factory serve`. Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "clientId",
+      "value": ""
+    },
+    {
+      "key": "clientSecret",
+      "value": ""
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 Data engine (s3-s7)",
+      "item": [
+        {
+          "name": "s3 generate_reference_data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/data-engine/s3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "data-engine",
+                "s3"
+              ]
+            },
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"generate_reference_data\",\n  \"stage\": \"s3\",\n  \"root_seed\": 20261015,\n  \"stage_seed\": 3660027736,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-sandbox-04\",\n    \"gcs\": \"gs://sandbox-04-docs\",\n    \"vector_index\": \"kb-sandbox-04\"\n  },\n  \"entities\": [\n    \"plan\",\n    \"provider\",\n    \"network_participation\",\n    \"practice_location\"\n  ],\n  \"volumes\": {\n    \"providers\": 216,\n    \"plans\": 4,\n    \"access_standards\": 120\n  },\n  \"rules\": [\n    \"R-04\",\n    \"F-04\",\n    \"P-02\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "s4 generate_members",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/data-engine/s4",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "data-engine",
+                "s4"
+              ]
+            },
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"generate_members\",\n  \"stage\": \"s4\",\n  \"root_seed\": 20261015,\n  \"stage_seed\": 3777471069,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-sandbox-04\",\n    \"gcs\": \"gs://sandbox-04-docs\",\n    \"vector_index\": \"kb-sandbox-04\"\n  },\n  \"consumes_refs\": \"s3 plan and provider ids\",\n  \"entities\": [\n    \"member_demographics\",\n    \"family_relationship\",\n    \"plan_enrollment\",\n    \"member_accumulator\",\n    \"pcp_assignment\",\n    \"risk_score\",\n    \"care_gap\",\n    \"sdoh_indicator\"\n  ],\n  \"volumes\": {\n    \"members\": 20000\n  },\n  \"distributions\": {\n    \"lob_mix\": {\n      \"COMMERCIAL\": 1\n    },\n    \"age_by_lob\": \"D-02\",\n    \"denial_rate\": 0.1\n  },\n  \"personas\": [\n    \"COMMERCIAL\",\n    \"BILLING\",\n    \"OFFICE\"\n  ],\n  \"rules\": [\n    \"R-02\",\n    \"R-05\",\n    \"R-06\",\n    \"T-01\"\n  ],\n  \"scenario_mix\": [\n    {\n      \"scenario_id\": \"MBN-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"MBN-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MBN-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MBN-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"MCI-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PCS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-04\",\n      \"share_pct\": 0.6\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "s5 generate_claims_auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/data-engine/s5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "data-engine",
+                "s5"
+              ]
+            },
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"generate_claims_auth\",\n  \"stage\": \"s5\",\n  \"root_seed\": 20261015,\n  \"stage_seed\": 3760693450,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-sandbox-04\",\n    \"gcs\": \"gs://sandbox-04-docs\",\n    \"vector_index\": \"kb-sandbox-04\"\n  },\n  \"consumes_refs\": \"s3 providers, s4 members and enrollments\",\n  \"entities\": [\n    \"claim_header\",\n    \"claim_line\",\n    \"pharmacy_claim_detail\",\n    \"claim_denial\",\n    \"claim_pend\",\n    \"claim_adjustment\",\n    \"claim_payment\",\n    \"appeal_record\",\n    \"reprocessing_history\",\n    \"auth_request\",\n    \"auth_determination\"\n  ],\n  \"volumes\": {\n    \"claims\": 120000,\n    \"authorizations\": 6000\n  },\n  \"denial_rate\": 0.1,\n  \"scenario_mix\": [\n    {\n      \"scenario_id\": \"MBN-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"MBN-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MBN-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MBN-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"MCI-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"MCI-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PCS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-04\",\n      \"share_pct\": 0.6\n    }\n  ],\n  \"rules\": [\n    \"R-03\",\n    \"R-07\",\n    \"F-01\",\n    \"F-02\",\n    \"F-05\",\n    \"T-02\",\n    \"T-03\",\n    \"T-04\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "s6 generate_care_knowledge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/data-engine/s6",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "data-engine",
+                "s6"
+              ]
+            },
+            "description": "Spec payload, unchanged. Run in order s3 -> s7.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"generate_care_knowledge\",\n  \"stage\": \"s6\",\n  \"root_seed\": 20261015,\n  \"stage_seed\": 3743915831,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-sandbox-04\",\n    \"gcs\": \"gs://sandbox-04-docs\",\n    \"vector_index\": \"kb-sandbox-04\"\n  },\n  \"consumes_refs\": \"s3 plans and providers, s4 members\",\n  \"entities\": [\n    \"knowledge_asset\",\n    \"asset_chunk\",\n    \"faq_entry\",\n    \"agent_sop\",\n    \"asset_link\",\n    \"qa_golden\"\n  ],\n  \"volumes\": {\n    \"knowledge_assets\": 49,\n    \"faq_entries\": 90\n  },\n  \"llm\": {\n    \"provider\": \"Vertex AI\",\n    \"model\": \"pinned at blueprint time\",\n    \"temperature\": 0,\n    \"text_cache\": \"content-addressed, Cloud Storage\"\n  },\n  \"rules\": [\n    \"R-09\",\n    \"R-10\",\n    \"R-11\",\n    \"T-08\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "s7 validate_and_scan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/data-engine/s7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "data-engine",
+                "s7"
+              ]
+            },
+            "description": "Spec payload, unchanged. Run in order s3 -> s7.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"validate_and_scan\",\n  \"stage\": \"s7\",\n  \"consumes\": {\n    \"from\": [\n      \"s3\",\n      \"s4\",\n      \"s5\",\n      \"s6\"\n    ],\n    \"entity_count\": 29,\n    \"total_rows\": 1038880\n  },\n  \"rule_sets\": [\n    \"R\",\n    \"T\",\n    \"F\",\n    \"C\",\n    \"P\",\n    \"A\"\n  ],\n  \"privacy_scan\": {\n    \"near_duplicates\": true,\n    \"rare_combinations\": true,\n    \"reserved_formats\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));",
+                  "pm.test('gate passed', () => pm.expect(pm.response.json().gate).to.eql('data_quality_gate PASSED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 API engine (s8)",
+      "item": [
+        {
+          "name": "s8 api_generate_and_deploy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/factory/api-engine/s8",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "api-engine",
+                "s8"
+              ]
+            },
+            "description": "Spec payload, unchanged. Run after s7; the tenant API then answers at {{baseUrl}}/v1 and {{baseUrl}}/docs.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"job\": \"api_generate_and_deploy\",\n  \"stage\": \"s8\",\n  \"style\": \"REST, OpenAPI 3.1\",\n  \"base_path\": \"/v1\",\n  \"use_cases\": [\n    \"MBN\",\n    \"MCI\",\n    \"PCS\"\n  ],\n  \"consumes\": {\n    \"from\": [\n      \"s2\",\n      \"s7\"\n    ],\n    \"alloydb\": \"alloy-sandbox-04\",\n    \"bigquery\": \"sandbox_04_claims\",\n    \"vector_index\": \"kb-sandbox-04\",\n    \"manifest\": \"gs://sandbox-04-docs/manifest/20261015.json\"\n  },\n  \"endpoints\": [\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/members/{member_id}/benefits\",\n      \"use_case\": \"MBN\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/members/{member_id}/accumulators\",\n      \"use_case\": \"MBN\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/members/{member_id}/claims\",\n      \"use_case\": \"MCI\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/claims/{claim_id}\",\n      \"use_case\": \"MCI\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/claims/{claim_id}/status\",\n      \"use_case\": \"PCS\"\n    },\n    {\n      \"method\": \"POST\",\n      \"path\": \"/v1/identity/verify\",\n      \"use_case\": \"COMMON\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/knowledge/search\",\n      \"use_case\": \"COMMON\"\n    }\n  ],\n  \"auth\": {\n    \"type\": \"OAuth2 client credentials\",\n    \"secret_ref\": \"projects/hf-sandbox-04/secrets/api-client-secret\"\n  },\n  \"rate_limit\": {\n    \"per_client_rpm\": 400\n  },\n  \"fault_injection\": {\n    \"error_rate_pct\": 1,\n    \"latency_p95_ms\": 450\n  },\n  \"agent_tools\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.test('DEPLOYED', () => pm.expect(pm.response.json().status).to.eql('DEPLOYED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 Tenant API (after s8)",
+      "item": [
+        {
+          "name": "Get local credentials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04/credentials",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04",
+                "credentials"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('clientId', b.client_id);",
+                  "pm.collectionVariables.set('clientSecret', b.client_secret);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "oauth",
+                "token"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{clientSecret}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search knowledge",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "x-fault-injection",
+                "value": "off"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/knowledge/search?q=prior authorization&k=3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "knowledge",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "prior authorization"
+                },
+                {
+                  "key": "k",
+                  "value": "3"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 Run status",
+      "item": [
+        {
+          "name": "Run status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manifest",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04/manifest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04",
+                "manifest"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rule report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04/rule-report",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04",
+                "rule-report"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Peek members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04/tables/member_demographics?limit=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04",
+                "tables",
+                "member_demographics"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset run (start over)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/sandbox-04",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "sandbox-04"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

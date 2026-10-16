@@ -1,0 +1,49 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 9,
+  "entities": [
+    {
+      "entity": "knowledge_asset",
+      "rows": 49,
+      "checksum": "265c4fdf"
+    },
+    {
+      "entity": "asset_chunk",
+      "rows": 2940,
+      "checksum": "383e10c2"
+    },
+    {
+      "entity": "faq_entry",
+      "rows": 90,
+      "checksum": "8010eb45"
+    },
+    {
+      "entity": "agent_sop",
+      "rows": 3,
+      "checksum": "84cbc542"
+    },
+    {
+      "entity": "asset_link",
+      "rows": 392,
+      "checksum": "e515d41a"
+    },
+    {
+      "entity": "qa_golden",
+      "rows": 180,
+      "checksum": "e06fc28a"
+    }
+  ],
+  "llm_text": {
+    "generated": 2940,
+    "served_from_cache": 0,
+    "cache_key": "sha256(model, prompt_version, inputs, seed)"
+  },
+  "vector_index": {
+    "loaded_chunks": 2940,
+    "index": "kb-perf-claims-03"
+  },
+  "rule_checks": {
+    "R-11": "PASS",
+    "T-08": "PASS"
+  }
+}

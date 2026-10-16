@@ -1,0 +1,53 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 2,
+  "total_rows": 1038880,
+  "validation": {
+    "rules_checked": 93,
+    "passed": 93,
+    "failed": 0,
+    "referential_integrity": "100%",
+    "report": "gs://sandbox-04-docs/reports/rule-report.json"
+  },
+  "privacy_scan": "PASS",
+  "manifest_uri": "gs://sandbox-04-docs/manifest/20261015.json",
+  "manifest": {
+    "blueprint_hash": "sha256:9e92536d9d9251da9c9250479b924eb4",
+    "data_spec_hash": "sha256:0b2797e90a279656092794c308279330",
+    "root_seed": 20261015,
+    "as_of_date": "2026-10-12",
+    "catalog_version": "2.4.0",
+    "generator_version": "3.1.0",
+    "entity_checksums": {
+      "plan": "0a9adca0",
+      "provider": "8a8189b3",
+      "network_participation": "8b7af059",
+      "practice_location": "45cb9b4d",
+      "member_demographics": "7d719abc",
+      "family_relationship": "28402a3c",
+      "plan_enrollment": "a81e4882",
+      "member_accumulator": "4f345a4c",
+      "pcp_assignment": "03f8a24c",
+      "risk_score": "d825ce39",
+      "care_gap": "8b6b7912",
+      "sdoh_indicator": "9469532c",
+      "claim_header": "928c36b8",
+      "claim_line": "eeeffd4b",
+      "pharmacy_claim_detail": "5da61e29",
+      "claim_denial": "03c15204",
+      "claim_pend": "3947ee05",
+      "claim_adjustment": "5d2c06ca",
+      "claim_payment": "403a0443",
+      "appeal_record": "22a16f6d",
+      "reprocessing_history": "3fc6f170",
+      "auth_request": "3c931299",
+      "auth_determination": "e451c615",
+      "knowledge_asset": "aebccef5",
+      "asset_chunk": "d74629f4",
+      "faq_entry": "9ecc375f",
+      "agent_sop": "660d5526",
+      "asset_link": "434e5f84",
+      "qa_golden": "f30c0312"
+    }
+  }
+}

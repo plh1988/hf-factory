@@ -72,6 +72,19 @@ FOREIGN_KEYS = [
     ("transition_of_care", "facility_npi", "provider", "npi"),
     ("transition_of_care", "case_id", "care_case", "case_id"),
     ("asset_chunk", "asset_id", "knowledge_asset", "asset_id"),
+    ("availability_schedule", "location_id", "practice_location", "location_id"),
+    ("availability_schedule", "npi", "provider", "npi"),
+    ("provider_rating", "npi", "provider", "npi"),
+    ("access_standard", "plan_id", "plan", "plan_id"),
+    ("reprocessing_history", "claim_id", "claim_header", "claim_id"),
+    ("reprocessing_history", "new_claim_id", "claim_header", "claim_id"),
+    ("claim_header", "original_claim_id", "claim_header", "claim_id"),
+    ("care_plan", "case_id", "care_case", "case_id"),
+    ("care_plan", "member_id", "member_demographics", "member_id"),
+    ("disease_program_enrollment", "member_id", "member_demographics", "member_id"),
+    ("outreach_campaign", "target_cohort_id", "risk_cohort", "cohort_id"),
+    ("outreach_history", "campaign_id", "outreach_campaign", "campaign_id"),
+    ("outreach_history", "member_id", "member_demographics", "member_id"),
     ("faq_entry", "asset_id", "knowledge_asset", "asset_id"),
     ("agent_sop", "asset_id", "knowledge_asset", "asset_id"),
     ("asset_link", "asset_id", "knowledge_asset", "asset_id"),
@@ -96,10 +109,11 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
               SELECT 1 FROM plan_enrollment e WHERE e.member_id = h.member_id AND e.plan_id = h.plan_id
                 AND e.effective_dt <= h.service_from_dt AND (e.term_dt IS NULL OR e.term_dt >= h.service_from_dt))""",
              ["claim_header", "plan_enrollment"]),
-        Rule("R-03", "Non-emergency claims with a PA-required line carry an approved auth", f"""
+        Rule("R-03", "Non-emergency claims with a PA-required line carry an approved auth (MCI-02 missing-auth denials exempt)", f"""
             SELECT count(*) FROM claim_header h WHERE NOT h.is_emergency
               AND EXISTS (SELECT 1 FROM claim_line l WHERE l.claim_id = h.claim_id AND l.cpt_hcpcs IN ({PA_LIST}))
-              AND NOT EXISTS (SELECT 1 FROM auth_request a WHERE a.auth_id = h.auth_id AND a.status IN ('APPROVED', 'PARTIAL'))""",
+              AND NOT EXISTS (SELECT 1 FROM auth_request a WHERE a.auth_id = h.auth_id AND a.status IN ('APPROVED', 'PARTIAL'))
+              AND h.scenario_id <> 'MCI-02'""",
              ["claim_header", "claim_line", "auth_request"]),
         Rule("R-04a", "Participation windows are valid: effective <= term; TERMED rows have a term date", """
             SELECT count(*) FROM network_participation WHERE (term_dt IS NOT NULL AND term_dt < effective_dt)
@@ -181,6 +195,12 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_header h JOIN auth_determination d ON d.auth_id = h.auth_id
             WHERE d.outcome <> 'DENIED' AND (d.valid_from > h.service_from_dt OR d.valid_to < h.service_to_dt)""",
              ["claim_header", "auth_determination"]),
+        Rule("T-05", "Appeals are filed by the deadline (PAP-04 late filings exempt by tag)", """
+            SELECT count(*) FROM appeal_record WHERE filed_dt > deadline_dt AND scenario_id <> 'PAP-04'""",
+             ["appeal_record"]),
+        Rule("T-05b", "Appeal decisions come after filing", """
+            SELECT count(*) FROM appeal_record WHERE decision_dt IS NOT NULL AND decision_dt < filed_dt""",
+             ["appeal_record"]),
         Rule("T-06", "TOC call due 48h after discharge; follow-up due in 7 days", """
             SELECT count(*) FROM transition_of_care WHERE
               toc_call_due_dt <> CAST(discharge_dt AS TIMESTAMP) + INTERVAL '48 hours'
@@ -190,6 +210,11 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM practice_location WHERE last_verified_dt < {d} - 90
               AND scenario_id <> '{catalog.DQ_STALE_DIRECTORY}'""",
              ["practice_location"]),
+        Rule("T-07b", "Next available slots are in the future and not on a blackout date (stale schedules exempt by tag)", f"""
+            SELECT count(*) FROM availability_schedule WHERE scenario_id <> '{catalog.DQ_STALE_SCHEDULE}'
+              AND (CAST(next_available_dt AS DATE) <= {d}
+                   OR list_contains(blackout_dates, CAST(CAST(next_available_dt AS DATE) AS VARCHAR)))""",
+             ["availability_schedule"]),
         Rule("T-08", "ACTIVE assets are effective on the as-of date", f"""
             SELECT count(*) FROM knowledge_asset WHERE status = 'ACTIVE'
               AND (effective_dt > {d} OR expiry_dt < {d})""",
@@ -239,9 +264,18 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_line l WHERE l.line_status = 'DENIED' AND (l.paid <> 0 OR NOT EXISTS (
               SELECT 1 FROM claim_adjustment a WHERE a.line_id = l.line_id AND a.group_code = 'CO'))""",
              ["claim_line", "claim_adjustment"]),
-        Rule("F-06", "Reprocessing: payment delta is consistent and net paid >= 0", """
-            SELECT count(*) FROM reprocessing_history WHERE paid_after < 0 OR paid_before < 0""",
-             ["reprocessing_history"]),
+        Rule("F-06", "Reprocessing: paid_before/paid_after equal the original and replacement claims' paid totals", """
+            SELECT count(*) FROM reprocessing_history r
+              JOIN claim_header o ON o.claim_id = r.claim_id JOIN claim_header n ON n.claim_id = r.new_claim_id
+            WHERE r.paid_before <> o.total_paid OR r.paid_after <> n.total_paid OR r.paid_after < 0""",
+             ["reprocessing_history", "claim_header"]),
+        Rule("F-07", "A payment equals the claim's paid total", """
+            SELECT count(*) FROM claim_payment p JOIN claim_header h ON h.claim_id = p.claim_id WHERE p.paid_amount <> h.total_paid""",
+             ["claim_payment", "claim_header"]),
+        Rule("R-07b", "Replacement claims (frequency 7) are paid versions of an ADJUSTED or REPROCESSED original", """
+            SELECT count(*) FROM claim_header n JOIN claim_header o ON o.claim_id = n.original_claim_id
+            WHERE n.claim_frequency_code = '7' AND o.status NOT IN ('ADJUSTED', 'REPROCESSED')""",
+             ["claim_header"]),
         Rule("C-03", "Auth denials state a rationale and send appeal rights", """
             SELECT count(*) FROM auth_determination WHERE outcome = 'DENIED'
               AND (denial_rationale IS NULL OR appeal_rights_sent_dt IS NULL)""",
@@ -250,6 +284,16 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_header h JOIN claim_denial d ON d.claim_id = h.claim_id
             WHERE h.is_emergency AND d.denial_category = 'AUTH'""",
              ["claim_header", "claim_denial"]),
+        Rule("C-07", "Outreach without consent is suppressed (TCPA)", """
+            SELECT count(*) FROM outreach_history WHERE consent_basis = 'NONE' AND outcome <> 'SUPPRESSED'""",
+             ["outreach_history"]),
+        Rule("A-04", "AI outreach discloses that it is AI", """
+            SELECT count(*) FROM outreach_history WHERE ai_disclosed IS NOT TRUE""",
+             ["outreach_history"]),
+        Rule("R-12", "Every plan has access standards for PCP in every geography", """
+            SELECT count(*) FROM plan p WHERE (SELECT count(DISTINCT geo_type) FROM access_standard a
+              WHERE a.plan_id = p.plan_id AND a.provider_type_or_specialty = 'PCP') < 3""",
+             ["plan", "access_standard"]),
         Rule("A-01", "Medical-necessity denials are made by a medical director or same-specialty peer", """
             SELECT count(*) FROM auth_determination WHERE outcome = 'DENIED' AND denial_category = 'MED_NECESSITY'
               AND decided_by_role NOT IN ('MEDICAL_DIRECTOR', 'SAME_SPECIALTY_PEER')""",

@@ -46,3 +46,26 @@ def test_evolve_is_prefix_stable():
     a = reg_small.runs["test-small"].stores.tables.query(sql)
     b = reg_big.runs["test-small"].stores.tables.query(sql)
     assert a.num_rows == 600 and fmt_checksum(checksum(a)) == fmt_checksum(checksum(b))
+
+
+def test_failed_shard_is_retried_with_identical_result(monkeypatch):
+    """A task that fails once (e.g. a transient store error) is re-run; upserts make the result identical."""
+    from factory.data_engine.stages import s5_claims_auth
+
+    clean, _ = new_client()
+    run_all(clean, small_payloads(), api=False)
+
+    real = s5_claims_auth.run_task
+    calls = {"n": 0}
+
+    def flaky(ctx, index, prep):
+        calls["n"] += 1
+        real(ctx, index, prep)          # writes part of the shard...
+        if calls["n"] == 2:
+            raise RuntimeError("simulated transient failure")  # ...then fails, so the task is retried
+
+    monkeypatch.setattr(s5_claims_auth, "run_task", flaky)
+    retried, _ = new_client()
+    resp = run_all(retried, small_payloads(), api=False)
+    assert resp["s5"].status_code == 200 and calls["n"] == 4  # 3 shards + 1 retry
+    assert checksums(retried, "test-small") == checksums(clean, "test-small")

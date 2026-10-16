@@ -1,0 +1,42 @@
+{
+  "job": "generate_members",
+  "stage": "s4",
+  "root_seed": 20261014,
+  "stage_seed": 3069869880,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 32,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-perf-claims-03",
+    "gcs": "gs://perf-claims-03-docs",
+    "vector_index": "kb-perf-claims-03"
+  },
+  "consumes_refs": "s3 plan and provider ids",
+  "entities": [
+    "member_demographics",
+    "plan_enrollment",
+    "pcp_assignment"
+  ],
+  "volumes": {
+    "members": 150000
+  },
+  "distributions": {
+    "lob_mix": {
+      "COMMERCIAL": 1
+    },
+    "age_by_lob": "D-02",
+    "denial_rate": 0.3
+  },
+  "personas": [
+    "BILLING",
+    "OFFICE"
+  ],
+  "rules": [
+    "R-02",
+    "R-05",
+    "R-06",
+    "T-01"
+  ]
+}

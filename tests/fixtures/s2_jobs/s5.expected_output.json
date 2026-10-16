@@ -1,0 +1,35 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 6,
+  "entities": [
+    {
+      "entity": "claim_header",
+      "rows": 600000,
+      "checksum": "56714361"
+    },
+    {
+      "entity": "claim_line",
+      "rows": 1380000,
+      "checksum": "b6429c2c"
+    },
+    {
+      "entity": "claim_denial",
+      "rows": 60000,
+      "checksum": "053f750b"
+    },
+    {
+      "entity": "claim_pend",
+      "rows": 30000,
+      "checksum": "ca4b73ee"
+    }
+  ],
+  "rule_checks": {
+    "R-03": "PASS",
+    "R-07": "PASS",
+    "F-01": "PASS",
+    "F-02": "PASS",
+    "F-05": "PASS",
+    "T-03": "PASS"
+  },
+  "loaded_to": "AlloyDB (serving) + BigQuery (analytics)"
+}

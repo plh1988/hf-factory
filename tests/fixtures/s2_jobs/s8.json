@@ -1,0 +1,76 @@
+{
+  "job": "api_generate_and_deploy",
+  "stage": "s8",
+  "style": "REST, OpenAPI 3.1",
+  "base_path": "/v1",
+  "use_cases": [
+    "MBN",
+    "MPS",
+    "MPC",
+    "MAS"
+  ],
+  "consumes": {
+    "from": [
+      "s2",
+      "s7"
+    ],
+    "alloydb": "alloy-mdcd-pilot-02",
+    "bigquery": "mdcd_pilot_02_claims",
+    "vector_index": "kb-mdcd-pilot-02",
+    "manifest": "gs://mdcd-pilot-02-docs/manifest/20261013.json"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/v1/members/{member_id}/benefits",
+      "use_case": "MBN"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/members/{member_id}/accumulators",
+      "use_case": "MBN"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/providers/search",
+      "use_case": "MPS"
+    },
+    {
+      "method": "PUT",
+      "path": "/v1/members/{member_id}/pcp",
+      "use_case": "MPC"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/providers/{npi}/availability",
+      "use_case": "MAS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/appointments",
+      "use_case": "MAS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/identity/verify",
+      "use_case": "COMMON"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/knowledge/search",
+      "use_case": "COMMON"
+    }
+  ],
+  "auth": {
+    "type": "OAuth2 client credentials",
+    "secret_ref": "projects/hf-mdcd-pilot-02/secrets/api-client-secret"
+  },
+  "rate_limit": {
+    "per_client_rpm": 1200
+  },
+  "fault_injection": {
+    "error_rate_pct": 3,
+    "latency_p95_ms": 900
+  },
+  "agent_tools": true
+}

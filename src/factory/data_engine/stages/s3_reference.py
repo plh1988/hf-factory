@@ -8,7 +8,7 @@ import numpy as np
 import pyarrow as pa
 
 from factory.data_engine import catalog
-from factory.data_engine.context import GenContext, dates
+from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.rng import money
 
 N_PLANS = 4
@@ -69,7 +69,7 @@ def gen_plans(ctx: GenContext) -> pa.Table:
         rows["copay_specialist"].append(cs[i % 2] * 100)
         rows["coinsurance_pct"].append(co)
     allowances = [
-        json.dumps({"OTC_quarterly": 100, "dental_annual": 1500, "vision_annual": 200} if lob != "COMMERCIAL" else {})
+        json.dumps({"OTC_quarterly": 100, "dental_annual": 1500, "vision_annual": 200, "transport_rides_annual": 24} if lob != "COMMERCIAL" else {})
         for lob in lobs
     ]
     return ctx.write("plan", {
@@ -142,7 +142,7 @@ def gen_participation(ctx: GenContext, providers: pa.Table, plans: pa.Table) -> 
     ptype = np.array(providers["provider_type"].to_pylist(), dtype=object)[pi]
     status = rr.choice("status", ["PARTICIPATING", "NON_PARTICIPATING", "PENDING_ONBOARDING", "TERMED"], [85, 6, 4, 5])
     status = np.where(pstatus == "TERMED", "TERMED", status)
-    eff = ctx.as_of - rr.integers("eff", 365, 5 * 365).astype("timedelta64[D]")
+    eff = ctx.as_of - rr.integers("eff", 400, 5 * 365).astype("timedelta64[D]")
     term = np.where(status == "TERMED", ctx.as_of - rr.integers("term", 30, 300).astype("timedelta64[D]"),
                     np.datetime64("NaT", "D"))
     panel = np.where(ptype == "PCP", rr.choice("panel", ["OPEN", "LIMITED", "CLOSED"], [75, 15, 10]), "OPEN")
@@ -200,9 +200,92 @@ def gen_locations(ctx: GenContext, providers: pa.Table) -> pa.Table:
     }, scenario=np.where(stale, catalog.DQ_STALE_DIRECTORY, "BASE"))
 
 
+# access standard rows: (provider type or specialty, distance by geo URBAN/SUBURBAN/RURAL, max wait days)
+ACCESS_RULES = [
+    ("PCP", (10, 20, 30), 15), ("PEDIATRICS", (10, 20, 30), 15), ("CARDIOLOGY", (15, 30, 60), 30),
+    ("ORTHOPAEDICS", (15, 30, 60), 30), ("RADIOLOGY", (15, 30, 60), 21), ("PHYSICAL_THERAPY", (15, 30, 45), 21),
+    ("HOSPITAL", (15, 30, 60), 0), ("SNF", (15, 30, 60), 0), ("PHARMACY", (5, 10, 20), 0), ("HOME_HEALTH", (30, 45, 60), 7),
+]
+SPECIALTY_KEY = {"Family Medicine": "PCP", "Internal Medicine": "PCP", "Pediatrics": "PEDIATRICS",
+                 "Cardiovascular Disease": "CARDIOLOGY", "Orthopaedic Surgery": "ORTHOPAEDICS",
+                 "Diagnostic Radiology": "RADIOLOGY", "Physical Therapist": "PHYSICAL_THERAPY",
+                 "General Acute Care Hospital": "HOSPITAL", "Skilled Nursing Facility": "SNF",
+                 "Home Health": "HOME_HEALTH", "Pharmacy": "PHARMACY"}
+DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
+
+
+def gen_access_standards(ctx: GenContext, plans: pa.Table) -> None:
+    rows = [(pi, ri, gi) for pi in range(plans.num_rows) for ri in range(len(ACCESS_RULES)) for gi in range(3)]
+    keys = np.array([pi * 1000 + ri * 10 + gi for pi, ri, gi in rows], dtype=np.int64)
+    plan_ids = plans["plan_id"].to_pylist()
+    ctx.write("access_standard", {
+        "standard_id": pa.array(ctx.ids("access_standard", keys)),
+        "plan_id": pa.array([plan_ids[pi] for pi, _, _ in rows]),
+        "provider_type_or_specialty": pa.array([ACCESS_RULES[ri][0] for _, ri, _ in rows]),
+        "geo_type": pa.array([("URBAN", "SUBURBAN", "RURAL")[gi] for _, _, gi in rows]),
+        "max_distance_miles": pa.array([ACCESS_RULES[ri][1][gi] for _, ri, gi in rows], pa.int32()),
+        "max_wait_days": pa.array([ACCESS_RULES[ri][2] for _, ri, _ in rows], pa.int32()),
+    })
+
+
+def gen_ratings(ctx: GenContext, providers: pa.Table) -> None:
+    n = providers.num_rows
+    keys = np.arange(n)
+    rr = ctx.rr("provider_rating", keys)
+    flags = [[f for f, on in (("HIGH_VALUE", a), ("CENTER_OF_EXCELLENCE", b)) if on]
+             for a, b in zip(rr.bernoulli("hv", 0.15), rr.bernoulli("coe", 0.05))]
+    ctx.write("provider_rating", {
+        "rating_id": pa.array(ctx.ids("provider_rating", keys)),
+        "npi": pa.array(providers["npi"].to_pylist()),
+        "as_of_dt": dates(np.full(n, ctx.as_of - 30 * np.timedelta64(1, "D"))),
+        "quality_score": pa.array(np.round(np.clip(rr.normal("quality", 4.0, 0.5), 1.0, 5.0), 1)),
+        "patient_satisfaction": pa.array(np.round(np.clip(rr.normal("satisfaction", 4.1, 0.5), 1.0, 5.0), 1)),
+        "rating_count": pa.array(rr.integers("count", 5, 400).astype(np.int32)),
+        "recognition_flags": pa.array(flags, pa.list_(pa.string())),
+    })
+
+
+def gen_schedules(ctx: GenContext, providers: pa.Table, locations: pa.Table) -> None:
+    """Weekday hours per practice location of individual providers; 10% stale (next slot in a blackout, MAS-04)."""
+    ptype = dict(zip(providers["npi"].to_pylist(), providers["provider_type"].to_pylist()))
+    loc_rows = [(i, lid, npi) for i, (lid, npi) in enumerate(zip(locations["location_id"].to_pylist(), locations["npi"].to_pylist()))
+                if ptype.get(npi) in ("PCP", "SPECIALIST")]
+    lrr = ctx.rr("availability_schedule:location", np.array([i for i, _, _ in loc_rows], dtype=np.int64))
+    n_days = 5 + lrr.bernoulli("saturday", 0.2).astype(int)
+    li = np.repeat(np.arange(len(loc_rows)), n_days)
+    di = np.concatenate([np.arange(k) for k in n_days]) if len(li) else np.array([], np.int64)
+    keys = np.array([loc_rows[x][0] for x in li], dtype=np.int64) * 8 + di
+    rr = ctx.rr("availability_schedule", keys)
+    lead = rr.integers("lead", 1, 31)
+    next_dt = ctx.as_of + lead.astype("timedelta64[D]")
+    slot_hour = rr.integers("slot_hour", 8, 16)
+    stale = lrr.bernoulli("stale", 0.10)[li]
+    blackout = [[str(d)] if s else ([str(ctx.as_of + np.timedelta64(int(o), "D"))] if b else [])
+                for d, s, b, o in zip(next_dt, stale, rr.bernoulli("vacation", 0.15), rr.integers("vac_offset", 35, 90))]
+    types = [["NEW_PATIENT", "FOLLOW_UP", "SICK", "WELLNESS"] + (["TELEHEALTH"] if t else []) for t in rr.bernoulli("tele", 0.4)]
+    ctx.write("availability_schedule", {
+        "schedule_id": pa.array(ctx.ids("availability_schedule", keys)),
+        "location_id": pa.array([loc_rows[x][1] for x in li]),
+        "npi": pa.array([loc_rows[x][2] for x in li]),
+        "day_of_week": pa.array([DAYS[d] for d in di]),
+        "open_time": pa.array(["08:00"] * len(li)),
+        "close_time": pa.array(np.where(di == 5, "12:00", "17:00").tolist()),
+        "appointment_types": pa.array(types, pa.list_(pa.string())),
+        "slot_minutes": pa.array(rr.choice("slot", [15, 20, 30], [40, 30, 30]).astype(np.int32)),
+        "next_available_dt": stamps(next_dt.astype("datetime64[s]") + slot_hour.astype("timedelta64[h]")),
+        "blackout_dates": pa.array(blackout, pa.list_(pa.string())),
+    }, scenario=np.where(stale, catalog.DQ_STALE_SCHEDULE, "BASE"))
+
+
 def run(ctx: GenContext) -> list[str]:
     plans = gen_plans(ctx)
     providers = gen_providers(ctx)
     gen_participation(ctx, providers, plans)
-    gen_locations(ctx, providers)
-    return ["plan", "provider", "network_participation", "practice_location"]
+    locations = gen_locations(ctx, providers)
+    if ctx.wants("access_standard"):
+        gen_access_standards(ctx, plans)
+    if ctx.wants("provider_rating"):
+        gen_ratings(ctx, providers)
+    if ctx.wants("availability_schedule"):
+        gen_schedules(ctx, providers, locations)
+    return [e for e in catalog.STAGE_ENTITIES["s3"] if ctx.wants(e)]

@@ -1,0 +1,95 @@
+{
+  "job": "generate_claims_auth",
+  "stage": "s5",
+  "root_seed": 20261014,
+  "stage_seed": 3086647499,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 32,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-perf-claims-03",
+    "gcs": "gs://perf-claims-03-docs",
+    "vector_index": "kb-perf-claims-03"
+  },
+  "consumes_refs": "s3 providers, s4 members and enrollments",
+  "entities": [
+    "claim_header",
+    "claim_line",
+    "pharmacy_claim_detail",
+    "claim_denial",
+    "claim_pend",
+    "claim_adjustment",
+    "claim_payment",
+    "appeal_record",
+    "reprocessing_history",
+    "auth_request",
+    "auth_determination"
+  ],
+  "volumes": {
+    "claims": 1000000,
+    "authorizations": 50000
+  },
+  "denial_rate": 0.3,
+  "scenario_mix": [
+    {
+      "scenario_id": "PCS-01",
+      "share_pct": 23.3
+    },
+    {
+      "scenario_id": "PCS-02",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PCS-03",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PCS-04",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PAP-01",
+      "share_pct": 23.3
+    },
+    {
+      "scenario_id": "PAP-02",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PAP-03",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PAP-04",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PPI-01",
+      "share_pct": 23.3
+    },
+    {
+      "scenario_id": "PPI-02",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PPI-03",
+      "share_pct": 3.3
+    },
+    {
+      "scenario_id": "PPI-04",
+      "share_pct": 3.3
+    }
+  ],
+  "rules": [
+    "R-03",
+    "R-07",
+    "F-01",
+    "F-02",
+    "F-05",
+    "T-02",
+    "T-03",
+    "T-04"
+  ]
+}

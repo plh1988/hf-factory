@@ -1,0 +1,29 @@
+{
+  "status": "DEPLOYED",
+  "duration_min": 4,
+  "gateway_url": "https://api-perf-claims-03.hfactory.example/v1",
+  "revision": "api-backend-00001",
+  "openapi_uri": "gs://perf-claims-03-docs/api/openapi.yaml",
+  "endpoint_count": 6,
+  "tool_manifest_uri": "gs://perf-claims-03-docs/api/tools.json",
+  "tools_published": 6,
+  "container_image": "api-backend@sha256:… (pinned)",
+  "contract_tests": {
+    "total": 24,
+    "passed": 24
+  },
+  "sample_call": {
+    "request": "POST /v1/claims/CLM-000987/appeals {\"level\":\"L1\",\"reason\":\"MED_NECESSITY\",\"documents\":[\"doc-77\"]}",
+    "response": {
+      "appeal_id": "APL-004512",
+      "status": "OPEN",
+      "deadline_dt": "2026-12-05",
+      "documents_required": [
+        "clinical_notes"
+      ],
+      "next_step": "Submit clinical notes before the deadline",
+      "is_synthetic": true,
+      "scenario_id": "PAP-01"
+    }
+  }
+}

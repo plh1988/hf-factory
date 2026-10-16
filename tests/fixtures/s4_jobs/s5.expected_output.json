@@ -1,0 +1,70 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 3,
+  "entities": [
+    {
+      "entity": "claim_header",
+      "rows": 120000,
+      "checksum": "928c36b8"
+    },
+    {
+      "entity": "claim_line",
+      "rows": 276000,
+      "checksum": "eeeffd4b"
+    },
+    {
+      "entity": "pharmacy_claim_detail",
+      "rows": 48000,
+      "checksum": "5da61e29"
+    },
+    {
+      "entity": "claim_denial",
+      "rows": 12000,
+      "checksum": "03c15204"
+    },
+    {
+      "entity": "claim_pend",
+      "rows": 6000,
+      "checksum": "3947ee05"
+    },
+    {
+      "entity": "claim_adjustment",
+      "rows": 252000,
+      "checksum": "5d2c06ca"
+    },
+    {
+      "entity": "claim_payment",
+      "rows": 102000,
+      "checksum": "403a0443"
+    },
+    {
+      "entity": "appeal_record",
+      "rows": 1440,
+      "checksum": "22a16f6d"
+    },
+    {
+      "entity": "reprocessing_history",
+      "rows": 4800,
+      "checksum": "3fc6f170"
+    },
+    {
+      "entity": "auth_request",
+      "rows": 6000,
+      "checksum": "3c931299"
+    },
+    {
+      "entity": "auth_determination",
+      "rows": 6600,
+      "checksum": "e451c615"
+    }
+  ],
+  "rule_checks": {
+    "R-03": "PASS",
+    "R-07": "PASS",
+    "F-01": "PASS",
+    "F-02": "PASS",
+    "F-05": "PASS",
+    "T-03": "PASS"
+  },
+  "loaded_to": "AlloyDB (serving) + BigQuery (analytics)"
+}

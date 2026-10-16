@@ -38,7 +38,7 @@
   <!-- title banner -->
   <rect x="20" y="16" width="1360" height="64" rx="14" fill="url(#hero)"/>
   <text x="44" y="47" font-size="24" font-weight="800" fill="#ffffff">Healthcare AI Platform Factory · Data Engine + API Engine (v1)</text>
-  <text x="44" y="69" font-size="13" fill="#e0e7ff">Each stage runs from its own job payload · deterministic synthetic data · one environment variable switches local and GCP</text>
+  <text x="44" y="69" font-size="13" fill="#e0e7ff">Each stage runs from its own job payload · scenarios S1–S4 · deterministic synthetic data · one variable switches local and GCP</text>
 
   <!-- ===================== row 1: caller, control plane, agents ===================== -->
   <!-- caller -->
@@ -158,7 +158,7 @@
   <rect x="63" y="468" width="818" height="56" rx="10" fill="#ffffff" stroke="#fbcfe8"/>
   <text x="79" y="490" font-size="12" font-weight="700" fill="#9d174d">RunSpec (built from payloads)</text>
   <text x="79" y="510" font-size="11" fill="#475569">s3 fixes seed · as_of_date · catalog 2.4.0 · tenant · later payloads add volumes, lob_mix, scenario_mix, entities</text>
-  <text x="866" y="490" font-size="11" fill="#475569" text-anchor="end">shards: index ranges, sequential in v1</text>
+  <text x="866" y="490" font-size="11" fill="#475569" text-anchor="end">shards: local tasks or Cloud Run Job tasks</text>
 
   <!-- control plane → data engine -->
   <path d="M560 216 V248" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arr)"/>
@@ -211,10 +211,10 @@
     <rect x="40" y="580" width="1320" height="210" rx="14" fill="#ffffff" stroke="#334155" stroke-width="1.5"/>
   </g>
   <text x="62" y="610" font-size="15" font-weight="800" fill="#1e293b" letter-spacing="0.5">PORTS &amp; ADAPTERS</text>
-  <text x="250" y="610" font-size="12" fill="#475569">engines call only these interfaces · a test fails if engine code imports a backend</text>
+  <text x="250" y="610" font-size="12" fill="#475569">engines call only these interfaces · + Executor port (local / Cloud Run Jobs)</text>
   <g font-size="10.5">
     <rect x="1000" y="597" width="12" height="12" rx="3" fill="#16a34a"/><text x="1018" y="607" fill="#166534">memory profiles</text>
-    <rect x="1124" y="597" width="12" height="12" rx="3" fill="#1a73e8"/><text x="1142" y="607" fill="#1e40af">gcp profile (stubbed)</text>
+    <rect x="1124" y="597" width="12" height="12" rx="3" fill="#1a73e8"/><text x="1142" y="607" fill="#1e40af">gcp profile</text>
   </g>
 
   <!-- chips: x = 60 + i*184, width 172 -->
@@ -326,11 +326,11 @@
   <g font-size="11.5" fill="#1e3a8a">
     <text x="1080" y="886">AlloyDB · BigQuery · Cloud Storage</text>
     <text x="1080" y="906">Vertex Vector Search · Pub/Sub</text>
-    <text x="1080" y="926">Cloud Run · API Gateway · Secret Manager</text>
+    <text x="1080" y="926">Cloud Run Jobs · Cloud Run · API Gateway</text>
     <text x="1080" y="946">names from the s2 output JSON</text>
   </g>
   <rect x="1080" y="954" width="196" height="18" rx="9" fill="#fef3c7"/>
-  <text x="1178" y="967" font-size="10.5" fill="#92400e" text-anchor="middle">adapters stubbed in v1</text>
+  <text x="1178" y="967" font-size="10.5" fill="#92400e" text-anchor="middle">implemented · not yet run on GCP</text>
 
   <!-- ports → runtimes -->
   <g stroke="#475569" stroke-width="1.5" fill="none" stroke-dasharray="4 4">

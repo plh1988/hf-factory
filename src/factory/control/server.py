@@ -124,7 +124,7 @@ def create_control_app(registry: Registry) -> FastAPI:
                                  **body, "duration_min": round(api.result.duration_s / 60, 2), "notes": notes,
                                  "failed_contract_tests": [t for t in api.contract_tests if not t["passed"]],
                                  "api_live": api.result.status == "DEPLOYED",
-                                 "try_it": {"swagger": body["gateway_url"].rsplit(job.base_path, 1)[0] + "/docs",
+                                 "try_it": {"swagger": (body["gateway_url"] or "").rsplit(job.base_path, 1)[0] + "/docs",
                                             "credentials": f"GET /factory/runs/{tid}/credentials (memory profiles only)"}},
                                 status_code=200 if api.result.status == "DEPLOYED" else 500)
 

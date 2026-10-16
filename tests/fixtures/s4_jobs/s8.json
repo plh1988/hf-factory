@@ -1,0 +1,70 @@
+{
+  "job": "api_generate_and_deploy",
+  "stage": "s8",
+  "style": "REST, OpenAPI 3.1",
+  "base_path": "/v1",
+  "use_cases": [
+    "MBN",
+    "MCI",
+    "PCS"
+  ],
+  "consumes": {
+    "from": [
+      "s2",
+      "s7"
+    ],
+    "alloydb": "alloy-sandbox-04",
+    "bigquery": "sandbox_04_claims",
+    "vector_index": "kb-sandbox-04",
+    "manifest": "gs://sandbox-04-docs/manifest/20261015.json"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/v1/members/{member_id}/benefits",
+      "use_case": "MBN"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/members/{member_id}/accumulators",
+      "use_case": "MBN"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/members/{member_id}/claims",
+      "use_case": "MCI"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/claims/{claim_id}",
+      "use_case": "MCI"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/claims/{claim_id}/status",
+      "use_case": "PCS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/identity/verify",
+      "use_case": "COMMON"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/knowledge/search",
+      "use_case": "COMMON"
+    }
+  ],
+  "auth": {
+    "type": "OAuth2 client credentials",
+    "secret_ref": "projects/hf-sandbox-04/secrets/api-client-secret"
+  },
+  "rate_limit": {
+    "per_client_rpm": 400
+  },
+  "fault_injection": {
+    "error_rate_pct": 1,
+    "latency_p95_ms": 450
+  },
+  "agent_tools": true
+}

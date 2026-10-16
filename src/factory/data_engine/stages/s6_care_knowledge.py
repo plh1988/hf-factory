@@ -165,7 +165,7 @@ def gen_knowledge(ctx: GenContext) -> dict:
             c_meta.append({"audience": s.audience, "asset_type": s.asset_type, "lob": s.lob, "use_case": s.use_case,
                            "effective_dt": f"{year}-01-01", "language": "EN"})
     c_ids = ctx.ids("asset_chunk", np.array(c_key))
-    vectors = ctx.stores.llm.embed(c_text)
+    vectors = ctx.stores.llm.embed(c_text, task="document")
     ctx.stores.vectors.upsert(c_ids, vectors, [
         {"chunk_id": cid, "asset_id": aid, "title": s.title, "text": t, **meta}
         for cid, aid, s, t, meta in zip(c_ids, c_asset, c_spec, c_text, c_meta)
@@ -255,8 +255,123 @@ def write_faq_sop_links_golden(ctx: GenContext, specs: list[AssetSpec], a_ids: l
     })
 
 
+# ------------------------------------------------------------------ care management programs
+COHORTS = [("High-risk CHF", "HIGH", "WEEKLY"), ("Rising-risk diabetes", "RISING", "MONTHLY"), ("High-risk COPD", "HIGH", "WEEKLY"),
+           ("Frequent ED users", "HIGH", "DAILY"), ("Post-discharge 30 days", "HIGH", "DAILY"), ("Rising-risk hypertension", "RISING", "MONTHLY"),
+           ("Maternity", "RISING", "WEEKLY"), ("Behavioral health engaged", "RISING", "MONTHLY"), ("CKD stage 3-4", "HIGH", "MONTHLY"),
+           ("Polypharmacy 10+", "RISING", "MONTHLY"), ("Gaps in care", "LOW", "MONTHLY"), ("Healthy adults", "LOW", "MONTHLY")]
+CAMPAIGN_PURPOSES = ["GAP_CLOSURE", "TOC", "WELLNESS", "RENEWAL", "ADHERENCE"]
+PROGRAMS = ["DIABETES", "CHF", "COPD", "ASTHMA", "HYPERTENSION", "CKD"]
+
+
+def gen_cohorts_and_campaigns(ctx: GenContext) -> tuple[list[str], list[str]]:
+    cohort_ids = ctx.ids("risk_cohort", np.arange(len(COHORTS)))
+    if ctx.wants("risk_cohort"):
+        ctx.write("risk_cohort", {
+            "cohort_id": pa.array(cohort_ids),
+            "cohort_name": pa.array([c[0] for c in COHORTS]),
+            "criteria": pa.array([json.dumps({"risk_tier": c[1]}) for c in COHORTS]),
+            "refresh_frequency": pa.array([c[2] for c in COHORTS]),
+        })
+    n = 20
+    keys = np.arange(n)
+    rr = ctx.rr("outreach_campaign", keys)
+    campaign_ids = ctx.ids("outreach_campaign", keys)
+    purpose = [CAMPAIGN_PURPOSES[i % len(CAMPAIGN_PURPOSES)] for i in keys]
+    start = ctx.as_of - rr.integers("start", 30, 300).astype("timedelta64[D]")
+    if ctx.wants("outreach_campaign"):
+        ctx.write("outreach_campaign", {
+            "campaign_id": pa.array(campaign_ids),
+            "name": pa.array([f"{pu.replace('_', ' ').title()} wave {i // len(CAMPAIGN_PURPOSES) + 1}" for i, pu in zip(keys, purpose)]),
+            "purpose": pa.array(purpose),
+            "channel": pa.array(rr.choice("channel", ["VOICE", "CHAT", "SMS"], [40, 20, 40]).tolist()),
+            "target_cohort_id": pa.array([cohort_ids[i % len(cohort_ids)] for i in keys]),
+            "start_dt": dates(start),
+            "end_dt": dates(start + 90 * DAY),
+            "script_asset_id": pa.array([None] * n, pa.string()),
+        })
+    return cohort_ids, campaign_ids
+
+
+def gen_programs_and_outreach(ctx: GenContext, campaign_ids: list[str]) -> None:
+    members = ctx.stores.tables.query("SELECT member_id, member_number FROM member_demographics ORDER BY member_number")
+    mids = np.array(members["member_id"].to_pylist(), dtype=object)
+    midx = np.array([int(x[4:]) - 1 for x in members["member_number"].to_pylist()], dtype=np.int64)
+    rr = ctx.rr("care_programs:member", midx)
+    if ctx.wants("disease_program_enrollment"):
+        sel = np.where(rr.bernoulli("program", 0.12))[0]
+        prr = ctx.rr("disease_program_enrollment", midx[sel])
+        status = prr.choice("status", ["IDENTIFIED", "ENROLLED", "ENGAGED", "DECLINED", "GRADUATED"], [15, 30, 35, 10, 10])
+        enrolled = ctx.as_of - prr.integers("enrolled", 30, 700).astype("timedelta64[D]")
+        ctx.write("disease_program_enrollment", {
+            "enrollment_id": pa.array(ctx.ids("disease_program_enrollment", midx[sel])),
+            "member_id": pa.array(mids[sel].tolist()),
+            "program": pa.array(prr.choice("prog", PROGRAMS).tolist()),
+            "status": pa.array(status.tolist()),
+            "enrolled_dt": dates(np.where(status == "IDENTIFIED", np.datetime64("NaT", "D"), enrolled)),
+            "graduated_dt": dates(np.where(status == "GRADUATED", enrolled + 180 * DAY, np.datetime64("NaT", "D"))),
+            "engagement_level": pa.array(prr.choice("engagement", ["LOW", "MEDIUM", "HIGH"]).tolist()),
+        })
+    if ctx.wants("outreach_history"):
+        k = np.minimum(rr.poisson("contacts", 0.25), 5)
+        oi = np.repeat(np.arange(len(midx)), k)
+        oj = np.concatenate([np.arange(x) for x in k]) if len(oi) else np.array([], np.int64)
+        keys = midx[oi] * 8 + oj
+        orr = ctx.rr("outreach_history", keys)
+        consent = orr.choice("consent", ["TREATMENT_EXEMPT", "EXPRESS_CONSENT", "NONE"], [55, 40, 5])
+        outcome = np.where(consent == "NONE", "SUPPRESSED",  # C-07: no consent, no AI contact
+                           orr.choice("outcome", ["REACHED", "VOICEMAIL", "NO_ANSWER", "REFUSED", "WRONG_NUMBER"], [40, 25, 25, 7, 3]))
+        ctx.write("outreach_history", {
+            "outreach_id": pa.array(ctx.ids("outreach_history", keys)),
+            "campaign_id": pa.array([campaign_ids[i] for i in orr.integers("campaign", 0, len(campaign_ids))]),
+            "member_id": pa.array(mids[oi].tolist()),
+            "channel": pa.array(orr.choice("channel", ["VOICE", "CHAT", "SMS"]).tolist()),
+            "attempt_dt": stamps(ctx.as_of.astype("datetime64[s]") - orr.integers("ago", 3600, 200 * 86400).astype("timedelta64[s]")),
+            "attempt_no": pa.array((oj + 1).astype(np.int32)),
+            "outcome": pa.array(outcome.tolist()),
+            "consent_basis": pa.array(consent.tolist()),
+            "ai_disclosed": pa.array(np.ones(len(keys), bool)),  # A-04: AI disclosure on every AI contact
+            "follow_up_required": pa.array(orr.bernoulli("follow_up", 0.2) & (outcome == "REACHED")),
+        })
+
+
+def gen_care_plans(ctx: GenContext) -> None:
+    if not ctx.stores.tables.exists("care_case"):
+        return
+    cases = ctx.stores.tables.query("SELECT case_id, member_id, opened_dt FROM care_case ORDER BY case_id")
+    n = cases.num_rows
+    keys = np.arange(n)
+    rr = ctx.rr("care_plan", np.array([int(x.replace("-", "")[:12], 16) for x in cases["case_id"].to_pylist()], dtype=np.int64))
+    has = rr.bernoulli("has_plan", 0.8)
+    measure = rr.choice("measure", ["A1C", "BP", "WEIGHT", "PHQ9"])
+    baseline = np.select([measure == "A1C", measure == "BP", measure == "WEIGHT"], [9.2, 152.0, 230.0], 16.0)
+    target = np.select([measure == "A1C", measure == "BP", measure == "WEIGHT"], [8.0, 130.0, 210.0], 9.0)
+    current = np.round(baseline + (target - baseline) * rr.u("progress"), 1)
+    goal = {"A1C": "A1c under 8 in 90 days", "BP": "Systolic BP under 130", "WEIGHT": "Lose 20 lb in 6 months", "PHQ9": "PHQ-9 under 10"}
+    opened = np.array([np.datetime64(d, "D") for d in cases["opened_dt"].to_pylist()], dtype="datetime64[D]")
+    sel = np.where(has)[0]
+    ctx.write("care_plan", {
+        "care_plan_id": pa.array(ctx.ids("care_plan", keys[sel])),
+        "case_id": pa.array(np.array(cases["case_id"].to_pylist(), dtype=object)[sel].tolist()),
+        "member_id": pa.array(np.array(cases["member_id"].to_pylist(), dtype=object)[sel].tolist()),
+        "goal": pa.array([goal[m] for m in measure[sel]]),
+        "measure": pa.array(measure[sel].tolist()),
+        "baseline": pa.array(baseline[sel]),
+        "target": pa.array(target[sel]),
+        "current": pa.array(current[sel]),
+        "interventions": pa.array([["education", "med review"] if m in ("A1C", "BP") else ["referral"] for m in measure[sel]],
+                                  pa.list_(pa.string())),
+        "next_review_dt": dates(np.maximum(opened[sel] + 30 * DAY, ctx.as_of + 7 * DAY)),
+    })
+
+
 def run(ctx: GenContext) -> tuple[list[str], dict]:
     if ctx.wants("care_case") or ctx.wants("transition_of_care"):
         gen_care(ctx)
+    if ctx.wants("care_plan"):
+        gen_care_plans(ctx)
+    if any(ctx.wants(e) for e in ("risk_cohort", "outreach_campaign", "outreach_history", "disease_program_enrollment")):
+        _, campaign_ids = gen_cohorts_and_campaigns(ctx)
+        gen_programs_and_outreach(ctx, campaign_ids)
     extra = gen_knowledge(ctx) if ctx.wants("knowledge_asset") else {}
     return [e for e in catalog.STAGE_ENTITIES["s6"] if ctx.wants(e)], extra

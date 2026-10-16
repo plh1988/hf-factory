@@ -1,0 +1,37 @@
+{
+  "status": "DEPLOYED",
+  "duration_min": 4,
+  "gateway_url": "https://api-sandbox-04.hfactory.example/v1",
+  "revision": "api-backend-00001",
+  "openapi_uri": "gs://sandbox-04-docs/api/openapi.yaml",
+  "endpoint_count": 7,
+  "tool_manifest_uri": "gs://sandbox-04-docs/api/tools.json",
+  "tools_published": 7,
+  "container_image": "api-backend@sha256:… (pinned)",
+  "contract_tests": {
+    "total": 28,
+    "passed": 28
+  },
+  "sample_call": {
+    "request": "GET /v1/members/MBR-00042/claims?status=denied",
+    "response": {
+      "member_id": "MBR-00042",
+      "claims": [
+        {
+          "claim_id": "CLM-000555",
+          "status": "DENIED",
+          "denial": {
+            "category": "AUTH",
+            "carc": "CO-197",
+            "reason_text": "Authorization was not on file for this service.",
+            "liable_party": "PROVIDER"
+          },
+          "member_resp": 0,
+          "appealable": true
+        }
+      ],
+      "is_synthetic": true,
+      "scenario_id": "MCI-02"
+    }
+  }
+}

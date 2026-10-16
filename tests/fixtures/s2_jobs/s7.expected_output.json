@@ -1,0 +1,51 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 2,
+  "total_rows": 3091628,
+  "validation": {
+    "rules_checked": 93,
+    "passed": 93,
+    "failed": 0,
+    "referential_integrity": "100%",
+    "report": "gs://mdcd-pilot-02-docs/reports/rule-report.json"
+  },
+  "privacy_scan": "PASS",
+  "manifest_uri": "gs://mdcd-pilot-02-docs/manifest/20261013.json",
+  "manifest": {
+    "blueprint_hash": "sha256:c8a19b58c9a19cebcaa19e7ecba1a011",
+    "data_spec_hash": "sha256:f0ccf56af1ccf6fdeeccf244efccf3d7",
+    "root_seed": 20261013,
+    "as_of_date": "2026-10-12",
+    "catalog_version": "2.4.0",
+    "generator_version": "3.1.0",
+    "entity_checksums": {
+      "plan": "89f4d48c",
+      "provider": "1e47102d",
+      "network_participation": "9ff5f3f0",
+      "practice_location": "6f212845",
+      "availability_schedule": "0b40ad7e",
+      "provider_rating": "d7962fdb",
+      "access_standard": "2fe97e1c",
+      "member_demographics": "1b7ce4cd",
+      "family_relationship": "b47d46fc",
+      "plan_enrollment": "a90a7d00",
+      "member_accumulator": "81d2e374",
+      "pcp_assignment": "91c279db",
+      "risk_score": "5cbc2547",
+      "care_gap": "9bbd441e",
+      "sdoh_indicator": "660993c3",
+      "claim_header": "56714361",
+      "claim_line": "b6429c2c",
+      "claim_denial": "053f750b",
+      "claim_pend": "ca4b73ee",
+      "care_case": "d50443f5",
+      "transition_of_care": "88ae5985",
+      "knowledge_asset": "dbd69cd5",
+      "asset_chunk": "b4a0d0e7",
+      "faq_entry": "0042da35",
+      "agent_sop": "865f392f",
+      "asset_link": "1325ddd9",
+      "qa_golden": "8fc0de6b"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 11,
+  "entities": [
+    {
+      "entity": "member_demographics",
+      "rows": 150000,
+      "checksum": "a56326f4"
+    },
+    {
+      "entity": "plan_enrollment",
+      "rows": 172500,
+      "checksum": "961ad7ac"
+    },
+    {
+      "entity": "pcp_assignment",
+      "rows": 180000,
+      "checksum": "2510f1a9"
+    }
+  ],
+  "rule_checks": {
+    "R-02": "PASS",
+    "R-05": "PASS",
+    "R-06": "PASS",
+    "T-01": "PASS"
+  },
+  "loaded_to": "AlloyDB"
+}

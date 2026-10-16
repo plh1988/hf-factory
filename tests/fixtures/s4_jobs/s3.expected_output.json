@@ -1,0 +1,33 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 1,
+  "entities": [
+    {
+      "entity": "plan",
+      "rows": 4,
+      "checksum": "0a9adca0"
+    },
+    {
+      "entity": "provider",
+      "rows": 216,
+      "checksum": "8a8189b3"
+    },
+    {
+      "entity": "network_participation",
+      "rows": 864,
+      "checksum": "8b7af059"
+    },
+    {
+      "entity": "practice_location",
+      "rows": 302,
+      "checksum": "45cb9b4d"
+    }
+  ],
+  "rule_checks": {
+    "R-04": "PASS",
+    "F-04": "PASS",
+    "P-02": "PASS"
+  },
+  "loaded_to": "AlloyDB",
+  "row_id_note": "IDs are UUIDv5 from (dataset_id, entity, seed, row_index)"
+}

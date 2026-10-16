@@ -371,16 +371,6 @@ def search_knowledge(request: Request, q: str = Query(..., min_length=2, max_len
                      audience: Literal["MEMBER", "PROVIDER", "INTERNAL"] | None = None,
                      k: int = Query(5, ge=1, le=10), _: str = Depends(require_client)) -> KnowledgeResults:
     stores = request.app.state.stores
-    vec = stores.llm.embed([q])[0]
+    vec = stores.llm.embed([q], task="query")[0]
     hits = stores.vectors.search(vec, k=k, where={"audience": audience} if audience else None)
     return KnowledgeResults(query=q, results=[KnowledgeHit(**{f: h[f] for f in KnowledgeHit.model_fields}) for h in hits])
-
-
-# use case -> router. v1 implements the S1 use cases; others fail fast in create_app.
-ENDPOINTS: dict[str, APIRouter] = {"PCS": pcs, "PAS": pas, "PEV": pev}
-
-# (method, path under base_path) per use case; COMMON is mounted for every tenant.
-ENDPOINT_CATALOG: dict[str, list[tuple[str, str]]] = {
-    uc: sorted((m, r.path) for r in router.routes for m in r.methods)
-    for uc, router in {**ENDPOINTS, "COMMON": common}.items()
-}

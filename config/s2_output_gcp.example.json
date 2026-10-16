@@ -1,11 +1,16 @@
 {
-  "_comment": "Stub of stage s2 output for GCP. Fill with the resources created by scripts/gcp_setup or the Infra engine.",
+  "_comment": "Example of stage s2 output (Infra engine) for the gcp profile. Replace with the real resources.",
   "project_id": "hf-ma-demo-01",
   "region": "us-central1",
   "alloydb": "projects/hf-ma-demo-01/locations/us-central1/clusters/alloy-ma-demo-01/instances/primary",
+  "db_user": "factory-engine@hf-ma-demo-01.iam",
   "bigquery_dataset": "hf-ma-demo-01:ma_demo_01_claims",
   "docs_bucket": "ma-demo-01-docs",
-  "vector_index": "kb-ma-demo-01",
+  "vector_index": "projects/hf-ma-demo-01/locations/us-central1/indexes/1234567890",
+  "vector_index_endpoint": "projects/hf-ma-demo-01/locations/us-central1/indexEndpoints/9876543210",
+  "deployed_index_id": "kb_ma_demo_01",
   "pubsub_topic": "scenario-events",
-  "data_loader_job": "data-loader"
+  "data_loader_job": "data-loader",
+  "image": "us-central1-docker.pkg.dev/hf-factory/factory/hf-factory:0.4.0",
+  "api_service_account": "factory-api@hf-ma-demo-01.iam.gserviceaccount.com"
 }

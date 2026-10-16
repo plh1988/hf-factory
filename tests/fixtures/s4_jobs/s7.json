@@ -1,0 +1,27 @@
+{
+  "job": "validate_and_scan",
+  "stage": "s7",
+  "consumes": {
+    "from": [
+      "s3",
+      "s4",
+      "s5",
+      "s6"
+    ],
+    "entity_count": 29,
+    "total_rows": 1038880
+  },
+  "rule_sets": [
+    "R",
+    "T",
+    "F",
+    "C",
+    "P",
+    "A"
+  ],
+  "privacy_scan": {
+    "near_duplicates": true,
+    "rare_combinations": true,
+    "reserved_formats": true
+  }
+}

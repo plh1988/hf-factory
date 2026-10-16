@@ -1,11 +1,40 @@
-# Production GCP services. Resource names come from the s2 output JSON (${s2.<field>}).
-# The adapters are stubbed in v1: they have the final signatures and raise NotImplementedError.
-tables:     {kind: alloydb, instance: "${s2.alloydb}", database: factory, iam_auth: true}
+# Production GCP services. Resource names come from the s2 output JSON (${s2.<field>}): pass it with
+# `factory --s2 <file> serve`, or inline as FACTORY_S2_JSON (how Cloud Run tasks and services receive it).
+# Every run is namespaced by tenant: AlloyDB schema t_<tenant>, gs://<bucket>/<tenant>/..., Vector Search restrict.
+# Credentials: Application Default Credentials (the service account on Cloud Run).
+tables:
+  kind: alloydb
+  instance: "${s2.alloydb}"
+  database: factory
+  user: "${s2.db_user}"              # IAM database user (service account email without .gserviceaccount.com)
+  iam_auth: true
+  ip_type: PRIVATE
 blobs:      {kind: gcs, bucket: "${s2.docs_bucket}"}
-vectors:    {kind: vertex_vector_search, index: "${s2.vector_index}"}
-events:     {kind: pubsub, topic: "${s2.pubsub_topic}"}
 text_cache: {kind: gcs, bucket: "${s2.docs_bucket}", prefix: cache/text}
-deployer:   {kind: cloud_run, region: "${s2.region}"}
+vectors:
+  kind: vertex_vector_search
+  project: "${s2.project_id}"
+  location: "${s2.region}"
+  index: "${s2.vector_index}"                   # projects/.../indexes/... (stream-update index)
+  index_endpoint: "${s2.vector_index_endpoint}"  # projects/.../indexEndpoints/...
+  deployed_index_id: "${s2.deployed_index_id}"
+  metadata_bucket: "${s2.docs_bucket}"
+events:     {kind: pubsub, project: "${s2.project_id}", topic: "${s2.pubsub_topic}"}
+executor:
+  kind: cloud_run_job
+  job: "projects/${s2.project_id}/locations/${s2.region}/jobs/${s2.data_loader_job}"
+  timeout_s: 3600
+  task_timeout_s: 1800
+  s2_json: "${s2.__json__}"
+deployer:
+  kind: cloud_run
+  project: "${s2.project_id}"
+  region: "${s2.region}"
+  image: "${s2.image}"
+  service_account: "${s2.api_service_account}"
+  gateway: true
+  gateway_service_account: "${s2.api_service_account}"
+  s2_json: "${s2.__json__}"
 llm:
   kind: vertex
   project: "${s2.project_id}"

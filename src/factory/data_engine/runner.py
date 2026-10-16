@@ -5,10 +5,12 @@ idempotent), runs the generator, checks the rules the job names, and publishes p
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from factory.adapters.jobs import TaskResult
 from factory.contracts import EntityResult, Manifest, StageResult
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext
@@ -51,6 +53,47 @@ class DataEngineRun:
         return bool(self.manifest) and self.report.get("failed", 1) == 0 and self.privacy.get("status") == "PASS"
 
 
+SHARDED = {"s4": s4_members, "s5": s5_claims_auth}
+
+
+def run_sharded(ctx: GenContext, stage: str) -> list[str]:
+    """Run a member-sharded stage through the profile's job executor (in-process tasks, or a Cloud Run Job)."""
+    mod = SHARDED[stage]
+    stores = ctx.stores
+    # what a remote task needs: the run spec and the shard count
+    stores.blobs.put("runs/spec.json", ctx.spec.model_dump_json(indent=2).encode(), "application/json")
+    stores.blobs.put(f"runs/{stage}/job.json", json.dumps({"shards": ctx.shards}).encode(), "application/json")
+    prep = mod.prepare(ctx)
+    n = mod.task_count(ctx, prep) if stage == "s5" else mod.task_count(ctx)
+
+    def local_task(i: int) -> TaskResult:
+        saved = ctx.counts, ctx.checksums
+        ctx.counts, ctx.checksums = {}, {}
+        try:
+            mod.run_task(ctx, i, prep)
+            return TaskResult(index=i, counts=dict(ctx.counts), checksums=dict(ctx.checksums))
+        finally:
+            ctx.counts, ctx.checksums = saved
+
+    args = ["task", "--stage", stage, "--tenant", ctx.tenant_id]
+    for res in stores.executor.run(stage, n, local_task, stores.blobs, args):
+        for e, c in res.counts.items():
+            ctx.counts[e] = ctx.counts.get(e, 0) + c
+        for e, h in res.checksums.items():
+            ctx.checksums[e] = (ctx.checksums.get(e, 0) + h) % (1 << 64)
+    stores.events.publish(TOPIC, {"stage": stage, "state": "TASKS_DONE", "tasks": n})
+    return [e for e in catalog.STAGE_ENTITIES[stage] if ctx.wants(e)]
+
+
+def run_task_remote(ctx: GenContext, stage: str, index: int) -> dict:
+    """Body of one Cloud Run Job task (`factory task`): generate shard `index`, return its partial counts/checksums."""
+    mod = SHARDED[stage]
+    prep = mod.prepare(ctx)
+    ctx.counts, ctx.checksums = {}, {}
+    mod.run_task(ctx, index, prep)
+    return {"index": index, "counts": ctx.counts, "checksums": {k: fmt_checksum(v) for k, v in ctx.checksums.items()}}
+
+
 def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, rule_sets: list[str] | None = None,
               privacy_options: dict | None = None, run: DataEngineRun | None = None) -> StageResult:
     """Run one stage against the stores in ctx. Raises DataEngineError on failure (after publishing it)."""
@@ -66,10 +109,8 @@ def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, ru
     try:
         if stage == "s3":
             ents = s3_reference.run(ctx)
-        elif stage == "s4":
-            ents = s4_members.run(ctx)
-        elif stage == "s5":
-            ents = s5_claims_auth.run(ctx)
+        elif stage in SHARDED:
+            ents = run_sharded(ctx, stage)
         elif stage == "s6":
             ents, extra = s6_care_knowledge.run(ctx)
         else:

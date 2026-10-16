@@ -95,8 +95,6 @@ def test_bad_requests():
     assert r.status_code == 422 and r.json()["error"] == "TENANT_REQUIRED"
     r = c.post("/factory/data-engine/s3", json={**spec_payload("s3"), "entities": ["plan", "spaceship"]})
     assert r.status_code == 422 and r.json()["error"] == "UNKNOWN_ENTITIES"
-    r = c.post("/factory/data-engine/s3", json={**spec_payload("s3"), "entities": ["plan", "availability_schedule"]})
-    assert r.status_code == 422 and r.json()["error"] == "ENTITIES_NOT_IMPLEMENTED"
     assert c.get("/factory/runs").json()["runs"] == []  # rejected s3 calls leave no run behind
 
 

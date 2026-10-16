@@ -1,0 +1,59 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 4,
+  "entities": [
+    {
+      "entity": "care_case",
+      "rows": 4000,
+      "checksum": "d50443f5"
+    },
+    {
+      "entity": "transition_of_care",
+      "rows": 3000,
+      "checksum": "88ae5985"
+    },
+    {
+      "entity": "knowledge_asset",
+      "rows": 52,
+      "checksum": "dbd69cd5"
+    },
+    {
+      "entity": "asset_chunk",
+      "rows": 3120,
+      "checksum": "b4a0d0e7"
+    },
+    {
+      "entity": "faq_entry",
+      "rows": 120,
+      "checksum": "0042da35"
+    },
+    {
+      "entity": "agent_sop",
+      "rows": 4,
+      "checksum": "865f392f"
+    },
+    {
+      "entity": "asset_link",
+      "rows": 416,
+      "checksum": "1325ddd9"
+    },
+    {
+      "entity": "qa_golden",
+      "rows": 240,
+      "checksum": "8fc0de6b"
+    }
+  ],
+  "llm_text": {
+    "generated": 3120,
+    "served_from_cache": 0,
+    "cache_key": "sha256(model, prompt_version, inputs, seed)"
+  },
+  "vector_index": {
+    "loaded_chunks": 3120,
+    "index": "kb-mdcd-pilot-02"
+  },
+  "rule_checks": {
+    "R-11": "PASS",
+    "T-08": "PASS"
+  }
+}

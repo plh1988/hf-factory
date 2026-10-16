@@ -66,7 +66,7 @@ class LLMClient(Protocol):
     embedding_dim: int
 
     def generate(self, prompt: str, system: str = "") -> str: ...
-    def embed(self, texts: list[str]) -> np.ndarray: ...
+    def embed(self, texts: list[str], task: str = "document") -> np.ndarray: ...  # task: document | query
     def health(self) -> str: ...
 
 
@@ -82,3 +82,5 @@ class Stores:
     text_cache: TextCache
     llm: LLMClient
     deployer: Any
+    executor: Any = None
+    namespace: str | None = None

@@ -1,0 +1,49 @@
+{
+  "status": "DEPLOYED",
+  "duration_min": 4,
+  "gateway_url": "https://api-mdcd-pilot-02.hfactory.example/v1",
+  "revision": "api-backend-00001",
+  "openapi_uri": "gs://mdcd-pilot-02-docs/api/openapi.yaml",
+  "endpoint_count": 8,
+  "tool_manifest_uri": "gs://mdcd-pilot-02-docs/api/tools.json",
+  "tools_published": 8,
+  "container_image": "api-backend@sha256:… (pinned)",
+  "contract_tests": {
+    "total": 32,
+    "passed": 32
+  },
+  "sample_call": {
+    "request": "GET /v1/providers/search?specialty=pediatrics&language=es&lat=34.05&lon=-89.12&radius_mi=30",
+    "response": {
+      "results_within_radius": 0,
+      "access_gap_logged": true,
+      "access_standard": {
+        "geo_type": "RURAL",
+        "max_distance_miles": 30
+      },
+      "widened_search": {
+        "radius_mi": 45,
+        "results": [
+          {
+            "npi": "1003000126",
+            "name": "Dr. A. Rivera",
+            "distance_mi": 41.2,
+            "languages": [
+              "EN",
+              "ES"
+            ],
+            "accepting_new_patients": true,
+            "rating": 4.6,
+            "next_available_dt": "2026-10-19T15:00:00Z"
+          }
+        ]
+      },
+      "telehealth": {
+        "available": true,
+        "count": 2
+      },
+      "is_synthetic": true,
+      "scenario_id": "MPS-02"
+    }
+  }
+}

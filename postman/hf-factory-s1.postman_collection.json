@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "HF Factory - S1 provider-facing demo",
-    "description": "Data Engine s3-s7 then API Engine s8 with the spec's S1 payloads. Start the server with `python -m factory serve`.",
+    "name": "HF Factory - S1 provider-facing demo (Medicare Advantage)",
+    "description": "Data Engine s3-s7 then API Engine s8 for tenant ma-demo-01. Start the server with `python -m factory serve`. Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -47,7 +47,7 @@
                 "s3"
               ]
             },
-            "description": "Spec S1 payload for s3. Run in order s3 -> s7.",
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"generate_reference_data\",\n  \"stage\": \"s3\",\n  \"root_seed\": 20261012,\n  \"stage_seed\": 3033971103,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-ma-demo-01\",\n    \"gcs\": \"gs://ma-demo-01-docs\",\n    \"vector_index\": \"kb-ma-demo-01\"\n  },\n  \"entities\": [\n    \"plan\",\n    \"provider\",\n    \"network_participation\",\n    \"practice_location\"\n  ],\n  \"volumes\": {\n    \"providers\": 540,\n    \"plans\": 4,\n    \"access_standards\": 120\n  },\n  \"rules\": [\n    \"R-04\",\n    \"F-04\",\n    \"P-02\"\n  ]\n}",
@@ -92,7 +92,7 @@
                 "s4"
               ]
             },
-            "description": "Spec S1 payload for s4, plus scenario_mix (the same block as the s5 payload). The spec's s4 payload has no scenario_mix; without it member scenarios PEV-01..04 (e.g. retro-terminated and pending-enrollment members) are not generated. Run in order s3 -> s7.",
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"generate_members\",\n  \"stage\": \"s4\",\n  \"root_seed\": 20261012,\n  \"stage_seed\": 2983638246,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-ma-demo-01\",\n    \"gcs\": \"gs://ma-demo-01-docs\",\n    \"vector_index\": \"kb-ma-demo-01\"\n  },\n  \"consumes_refs\": \"s3 plan and provider ids\",\n  \"entities\": [\n    \"member_demographics\",\n    \"family_relationship\",\n    \"plan_enrollment\",\n    \"member_accumulator\",\n    \"pcp_assignment\",\n    \"risk_score\",\n    \"care_gap\",\n    \"sdoh_indicator\"\n  ],\n  \"volumes\": {\n    \"members\": 50000\n  },\n  \"distributions\": {\n    \"lob_mix\": {\n      \"MEDICARE_ADV\": 1\n    },\n    \"age_by_lob\": \"D-02\",\n    \"denial_rate\": 0.1\n  },\n  \"personas\": [\n    \"BILLING\",\n    \"REFERRAL\",\n    \"OFFICE\"\n  ],\n  \"rules\": [\n    \"R-02\",\n    \"R-05\",\n    \"R-06\",\n    \"T-01\"\n  ],\n  \"scenario_mix\": [\n    {\n      \"scenario_id\": \"PCS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PCS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PAS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PEV-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-04\",\n      \"share_pct\": 0.6\n    }\n  ]\n}",
@@ -137,7 +137,7 @@
                 "s5"
               ]
             },
-            "description": "Spec S1 payload for s5. Run in order s3 -> s7.",
+            "description": "Changes from the spec payload: s4 carries the s5 scenario_mix so member scenarios are generated. Run in order s3 -> s7.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"generate_claims_auth\",\n  \"stage\": \"s5\",\n  \"root_seed\": 20261012,\n  \"stage_seed\": 3000415865,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-ma-demo-01\",\n    \"gcs\": \"gs://ma-demo-01-docs\",\n    \"vector_index\": \"kb-ma-demo-01\"\n  },\n  \"consumes_refs\": \"s3 providers, s4 members and enrollments\",\n  \"entities\": [\n    \"claim_header\",\n    \"claim_line\",\n    \"pharmacy_claim_detail\",\n    \"claim_denial\",\n    \"claim_pend\",\n    \"claim_adjustment\",\n    \"claim_payment\",\n    \"appeal_record\",\n    \"reprocessing_history\",\n    \"auth_request\",\n    \"auth_line\",\n    \"auth_determination\",\n    \"clinical_review_queue\",\n    \"documentation_requirement\"\n  ],\n  \"volumes\": {\n    \"claims\": 50000,\n    \"authorizations\": 2500\n  },\n  \"denial_rate\": 0.1,\n  \"scenario_mix\": [\n    {\n      \"scenario_id\": \"PCS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PCS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PCS-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PAS-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PAS-04\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-01\",\n      \"share_pct\": 31.7\n    },\n    {\n      \"scenario_id\": \"PEV-02\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-03\",\n      \"share_pct\": 0.6\n    },\n    {\n      \"scenario_id\": \"PEV-04\",\n      \"share_pct\": 0.6\n    }\n  ],\n  \"rules\": [\n    \"R-03\",\n    \"R-07\",\n    \"F-01\",\n    \"F-02\",\n    \"F-05\",\n    \"T-02\",\n    \"T-03\",\n    \"T-04\"\n  ]\n}",
@@ -182,7 +182,7 @@
                 "s6"
               ]
             },
-            "description": "Spec S1 payload for s6. Run in order s3 -> s7.",
+            "description": "Spec payload, unchanged. Run in order s3 -> s7.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"generate_care_knowledge\",\n  \"stage\": \"s6\",\n  \"root_seed\": 20261012,\n  \"stage_seed\": 2950083008,\n  \"as_of_date\": \"2026-10-12\",\n  \"catalog_version\": \"2.4.0\",\n  \"id_strategy\": \"UUIDv5(dataset_id, entity, seed, row_index)\",\n  \"shards\": 8,\n  \"consumes\": {\n    \"from\": \"s2\",\n    \"alloydb\": \"alloy-ma-demo-01\",\n    \"gcs\": \"gs://ma-demo-01-docs\",\n    \"vector_index\": \"kb-ma-demo-01\"\n  },\n  \"consumes_refs\": \"s3 plans and providers, s4 members\",\n  \"entities\": [\n    \"care_case\",\n    \"transition_of_care\",\n    \"knowledge_asset\",\n    \"asset_chunk\",\n    \"faq_entry\",\n    \"agent_sop\",\n    \"asset_link\",\n    \"qa_golden\"\n  ],\n  \"volumes\": {\n    \"knowledge_assets\": 49,\n    \"faq_entries\": 90\n  },\n  \"llm\": {\n    \"provider\": \"Vertex AI\",\n    \"model\": \"pinned at blueprint time\",\n    \"temperature\": 0,\n    \"text_cache\": \"content-addressed, Cloud Storage\"\n  },\n  \"rules\": [\n    \"R-09\",\n    \"R-10\",\n    \"R-11\",\n    \"T-08\"\n  ]\n}",
@@ -227,7 +227,7 @@
                 "s7"
               ]
             },
-            "description": "Spec S1 payload for s7. Run in order s3 -> s7.",
+            "description": "Spec payload, unchanged. Run in order s3 -> s7.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"validate_and_scan\",\n  \"stage\": \"s7\",\n  \"consumes\": {\n    \"from\": [\n      \"s3\",\n      \"s4\",\n      \"s5\",\n      \"s6\"\n    ],\n    \"entity_count\": 34,\n    \"total_rows\": 860839\n  },\n  \"rule_sets\": [\n    \"R\",\n    \"T\",\n    \"F\",\n    \"C\",\n    \"P\",\n    \"A\"\n  ],\n  \"privacy_scan\": {\n    \"near_duplicates\": true,\n    \"rare_combinations\": true,\n    \"reserved_formats\": true\n  }\n}",
@@ -278,7 +278,7 @@
                 "s8"
               ]
             },
-            "description": "Run after s7. On success the tenant API is served at {{baseUrl}}/v1 and {{baseUrl}}/docs.",
+            "description": "Spec payload, unchanged. Run after s7; the tenant API then answers at {{baseUrl}}/v1 and {{baseUrl}}/docs.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"job\": \"api_generate_and_deploy\",\n  \"stage\": \"s8\",\n  \"style\": \"REST, OpenAPI 3.1\",\n  \"base_path\": \"/v1\",\n  \"use_cases\": [\n    \"PCS\",\n    \"PAS\",\n    \"PEV\"\n  ],\n  \"consumes\": {\n    \"from\": [\n      \"s2\",\n      \"s7\"\n    ],\n    \"alloydb\": \"alloy-ma-demo-01\",\n    \"bigquery\": \"ma_demo_01_claims\",\n    \"vector_index\": \"kb-ma-demo-01\",\n    \"manifest\": \"gs://ma-demo-01-docs/manifest/20261012.json\"\n  },\n  \"endpoints\": [\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/claims/{claim_id}/status\",\n      \"use_case\": \"PCS\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/authorizations/{auth_id}/status\",\n      \"use_case\": \"PAS\"\n    },\n    {\n      \"method\": \"POST\",\n      \"path\": \"/v1/authorizations/{auth_id}/documents\",\n      \"use_case\": \"PAS\"\n    },\n    {\n      \"method\": \"POST\",\n      \"path\": \"/v1/eligibility/verify\",\n      \"use_case\": \"PEV\"\n    },\n    {\n      \"method\": \"POST\",\n      \"path\": \"/v1/identity/verify\",\n      \"use_case\": \"COMMON\"\n    },\n    {\n      \"method\": \"GET\",\n      \"path\": \"/v1/knowledge/search\",\n      \"use_case\": \"COMMON\"\n    }\n  ],\n  \"auth\": {\n    \"type\": \"OAuth2 client credentials\",\n    \"secret_ref\": \"projects/hf-ma-demo-01/secrets/api-client-secret\"\n  },\n  \"rate_limit\": {\n    \"per_client_rpm\": 600\n  },\n  \"fault_injection\": {\n    \"error_rate_pct\": 1,\n    \"latency_p95_ms\": 450\n  },\n  \"agent_tools\": true\n}",
@@ -403,7 +403,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/v1/knowledge/search?q=prior authorization urgent&k=3",
+              "raw": "{{baseUrl}}/v1/knowledge/search?q=prior authorization&k=3",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -415,7 +415,7 @@
               "query": [
                 {
                   "key": "q",
-                  "value": "prior authorization urgent"
+                  "value": "prior authorization"
                 },
                 {
                   "key": "k",
@@ -518,6 +518,44 @@
                 "runs",
                 "ma-demo-01",
                 "rule-report"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Peek members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/factory/runs/ma-demo-01/tables/member_demographics?limit=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "factory",
+                "runs",
+                "ma-demo-01",
+                "tables",
+                "member_demographics"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
               ]
             },
             "description": ""

@@ -1,4 +1,8 @@
-"""Builds adapters from the active profile. The ONLY place that maps a profile to backends."""
+"""Builds adapters from the active profile. The ONLY place that maps a profile to backends.
+
+namespace (the tenant) isolates runs: an AlloyDB schema, a Cloud Storage prefix, a Vector Search restrict,
+a Pub/Sub attribute. The memory adapters are per-run objects already and ignore it.
+"""
 
 from __future__ import annotations
 
@@ -8,28 +12,31 @@ from factory.adapters.ports import Stores
 from factory.config import AdapterConfig, Profile
 
 
-def _memory_tables(cfg: AdapterConfig) -> Any:
-    from factory.adapters.memory import DuckDBTableStore
-
-    return DuckDBTableStore()
-
-
-def _registry() -> dict[str, dict[str, Callable[[AdapterConfig], Any]]]:
-    from factory.adapters import gcp, llm, memory
+def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any]]]:
+    from factory.adapters import llm, memory
     from factory.adapters.deploy import CloudRunDeployer, LocalDeployer
+    from factory.adapters.jobs import CloudRunJobExecutor, LocalExecutor
+
+    def gcp(name: str) -> Callable[[AdapterConfig, str | None], Any]:
+        def make(cfg: AdapterConfig, ns: str | None) -> Any:
+            from factory.adapters import gcp as g  # Google Cloud libraries load only for the gcp profile
+
+            return getattr(g, name)(cfg, ns)
+        return make
 
     return {
-        "tables": {"duckdb": _memory_tables, "alloydb": gcp.AlloyDBTableStore},
-        "blobs": {"memory": lambda c: memory.MemoryBlobStore(), "gcs": gcp.GCSBlobStore},
-        "vectors": {"numpy": lambda c: memory.NumpyVectorIndex(), "vertex_vector_search": gcp.VertexVectorIndex},
-        "events": {"log": lambda c: memory.LogEventBus(), "pubsub": gcp.PubSubEventBus},
-        "text_cache": {"memory": lambda c: memory.MemoryTextCache(), "gcs": gcp.GCSTextCache},
-        "llm": {"offline": llm.OfflineLLM, "vertex": llm.VertexLLM},
-        "deployer": {"local": LocalDeployer, "cloud_run": CloudRunDeployer},
+        "tables": {"duckdb": lambda c, ns: memory.DuckDBTableStore(), "alloydb": gcp("AlloyDBTableStore")},
+        "blobs": {"memory": lambda c, ns: memory.MemoryBlobStore(), "gcs": gcp("GCSBlobStore")},
+        "vectors": {"numpy": lambda c, ns: memory.NumpyVectorIndex(), "vertex_vector_search": gcp("VertexVectorIndex")},
+        "events": {"log": lambda c, ns: memory.LogEventBus(), "pubsub": gcp("PubSubEventBus")},
+        "text_cache": {"memory": lambda c, ns: memory.MemoryTextCache(), "gcs": gcp("GCSTextCache")},
+        "llm": {"offline": lambda c, ns: llm.OfflineLLM(c), "vertex": lambda c, ns: llm.VertexLLM(c)},
+        "deployer": {"local": lambda c, ns: LocalDeployer(c), "cloud_run": CloudRunDeployer},
+        "executor": {"local": LocalExecutor, "cloud_run_job": CloudRunJobExecutor},
     }
 
 
-def build_stores(profile: Profile) -> Stores:
+def build_stores(profile: Profile, namespace: str | None = None) -> Stores:
     reg = _registry()
 
     def make(port: str) -> Any:
@@ -38,7 +45,7 @@ def build_stores(profile: Profile) -> Stores:
             factory = reg[port][cfg.kind]
         except KeyError:
             raise ValueError(f"profile {profile.name!r}: unknown {port} kind {cfg.kind!r}") from None
-        return factory(cfg)
+        return factory(cfg, namespace)
 
     return Stores(
         profile=profile.name,
@@ -49,4 +56,6 @@ def build_stores(profile: Profile) -> Stores:
         text_cache=make("text_cache"),
         llm=make("llm"),
         deployer=make("deployer"),
+        executor=make("executor"),
+        namespace=namespace,
     )

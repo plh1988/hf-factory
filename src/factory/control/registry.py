@@ -19,7 +19,7 @@ from typing import Any
 
 from factory.adapters import build_stores
 from factory.adapters.ports import Stores
-from factory.api_engine.routes import ENDPOINT_CATALOG, ENDPOINTS
+from factory.api_engine.endpoints import ENDPOINT_CATALOG, ENDPOINTS
 from factory.api_engine.stage import ApiEngineRun
 from factory.config import Profile
 from factory.contracts import ApiJob, DataJob, RunSpec, S2Output, StageResult, payload_hash
@@ -37,6 +37,13 @@ USE_CASE_TABLES = {  # s8: data a use case's endpoints read
     "PCS": ["claim_header", "claim_line", "claim_denial", "claim_pend", "claim_payment", "provider"],
     "PAS": ["auth_request", "auth_line", "auth_determination", "clinical_review_queue", "documentation_requirement", "provider"],
     "PEV": ["member_demographics", "plan_enrollment", "plan", "provider"],
+    "MBN": ["member_demographics", "plan_enrollment", "plan"],
+    "MCI": ["member_demographics", "claim_header", "claim_line"],
+    "MPS": ["provider", "network_participation", "practice_location"],
+    "MPC": ["member_demographics", "plan_enrollment", "pcp_assignment", "provider", "network_participation", "practice_location"],
+    "MAS": ["member_demographics", "plan_enrollment", "provider", "network_participation", "availability_schedule"],
+    "PAP": ["claim_header", "claim_denial", "appeal_record", "provider"],
+    "PPI": ["claim_header", "claim_payment", "provider"],
     "COMMON": ["provider", "member_demographics", "asset_chunk"],
 }
 
@@ -56,6 +63,7 @@ class Run:
     completed: dict[str, StageResult] = field(default_factory=dict)
     api: ApiEngineRun | None = None
     updated_at: float = field(default_factory=time.time)
+    limits: dict[str, int] = field(default_factory=dict)
 
     def status(self) -> dict[str, Any]:
         stages = {s: (self.completed[s].status if s in self.completed else "NOT_RUN") for s in STAGES}
@@ -104,8 +112,8 @@ class Registry:
                                   {"run": {k: str(v) for k, v in held.items()}, "payload": {k: str(v) for k, v in settings.items()}})
             return run
         spec = RunSpec(tenant_id=tenant, dataset_id=tenant, **settings)
-        stores = build_stores(self.profile)
-        run = Run(spec, stores, GenContext(spec, stores))
+        stores = build_stores(self.profile, namespace=tenant)
+        run = Run(spec, stores, GenContext(spec, stores), limits=dict(self.profile.limits))
         self.runs[tenant] = run
         return run
 
@@ -187,6 +195,12 @@ def validate_data_job(stage: str, job: DataJob, run: Run) -> list[str]:
             notes.append(f"{e} is generated in {home}, not {stage}{why}.")
 
     vol = job.volumes
+    limits = run.limits
+    for key, cap in (("members", limits.get("max_members")), ("claims", limits.get("max_claims"))):
+        if cap and vol.get(key, 0) > cap:
+            raise JobRejected(413, "PAYLOAD_TOO_LARGE_FOR_PROFILE",
+                              f"volumes.{key}={vol[key]:,} exceeds this profile's limit of {cap:,}. Scale the payload down "
+                              f"(keep claims per member the same) or use the gcp profile.", {"limit": cap, "sent": vol[key]})
     if stage == "s3":
         if "provider" in job.entities and not vol.get("providers"):
             raise JobRejected(422, "VOLUME_REQUIRED", "s3 needs volumes.providers.")

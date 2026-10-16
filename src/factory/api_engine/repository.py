@@ -89,3 +89,48 @@ class Repository:
     def accumulator(self, member_id: str, year: int) -> dict | None:
         return self._one("SELECT deductible_met, oop_met FROM member_accumulator WHERE member_id = ? AND plan_year = ? "
                          "AND network = 'IN'", [member_id, year])
+
+    # ---------------------------------------------------------------- writes and lookups for S2-S4 use cases
+    def exists(self, entity: str) -> bool:
+        return self.tables.exists(entity)
+
+    def insert_row(self, entity: str, key: str, row: dict[str, Any]) -> None:
+        """Upsert one row using the table's own schema (keeps types identical to generated rows)."""
+        schema = self.tables.query(f'SELECT * FROM "{entity}" LIMIT 0').schema
+        full = {f.name: row.get(f.name) for f in schema}
+        self.tables.upsert(entity, pa.Table.from_pylist([full], schema=schema), key)
+
+    def rows(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+        return self._rows(sql, params or [])
+
+    def one(self, sql: str, params: list[Any] | None = None) -> dict[str, Any] | None:
+        return self._one(sql, params or [])
+
+    def caregiver(self, member_id: str, relationship_id: str) -> dict | None:
+        return self._one("SELECT * FROM family_relationship WHERE member_id = ? AND relationship_id = ? AND caregiver_flag",
+                         [member_id, relationship_id])
+
+    def plan(self, plan_id: str) -> dict | None:
+        return self._one("SELECT * FROM plan WHERE plan_id = ?", [plan_id])
+
+    def plan_documents(self, plan_id: str) -> list[dict]:
+        if not (self.tables.exists("asset_link") and self.tables.exists("knowledge_asset")):
+            return []
+        return self._rows("SELECT k.asset_id, k.title, k.asset_type FROM asset_link l JOIN knowledge_asset k ON k.asset_id = l.asset_id "
+                          "WHERE l.linked_entity = 'PLAN' AND l.linked_key = ? AND k.status = 'ACTIVE' ORDER BY k.asset_type", [plan_id])
+
+    def accumulators(self, member_id: str, year: int) -> list[dict]:
+        if not self.tables.exists("member_accumulator"):
+            return []
+        return self._rows("SELECT network, deductible_met, oop_met FROM member_accumulator WHERE member_id = ? AND plan_year = ?",
+                          [member_id, year])
+
+    def sdoh(self, member_id: str) -> list[dict]:
+        if not self.tables.exists("sdoh_indicator"):
+            return []
+        return self._rows("SELECT domain, positive, referral_status FROM sdoh_indicator WHERE member_id = ?", [member_id])
+
+    def open_gaps(self, member_id: str) -> list[dict]:
+        if not self.tables.exists("care_gap"):
+            return []
+        return self._rows("SELECT measure, due_dt FROM care_gap WHERE member_id = ? AND status = 'OPEN' ORDER BY measure", [member_id])

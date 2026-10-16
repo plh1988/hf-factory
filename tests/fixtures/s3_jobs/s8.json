@@ -1,0 +1,65 @@
+{
+  "job": "api_generate_and_deploy",
+  "stage": "s8",
+  "style": "REST, OpenAPI 3.1",
+  "base_path": "/v1",
+  "use_cases": [
+    "PCS",
+    "PAP",
+    "PPI"
+  ],
+  "consumes": {
+    "from": [
+      "s2",
+      "s7"
+    ],
+    "alloydb": "alloy-perf-claims-03",
+    "bigquery": "perf_claims_03_claims",
+    "vector_index": "kb-perf-claims-03",
+    "manifest": "gs://perf-claims-03-docs/manifest/20261014.json"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/v1/claims/{claim_id}/status",
+      "use_case": "PCS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/claims/{claim_id}/appeals",
+      "use_case": "PAP"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/appeals/{appeal_id}",
+      "use_case": "PAP"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/claims/{claim_id}/payments",
+      "use_case": "PPI"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/identity/verify",
+      "use_case": "COMMON"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/knowledge/search",
+      "use_case": "COMMON"
+    }
+  ],
+  "auth": {
+    "type": "OAuth2 client credentials",
+    "secret_ref": "projects/hf-perf-claims-03/secrets/api-client-secret"
+  },
+  "rate_limit": {
+    "per_client_rpm": 4000
+  },
+  "fault_injection": {
+    "error_rate_pct": 3,
+    "latency_p95_ms": 900
+  },
+  "agent_tools": true
+}

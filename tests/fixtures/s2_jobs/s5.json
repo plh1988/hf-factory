@@ -1,0 +1,104 @@
+{
+  "job": "generate_claims_auth",
+  "stage": "s5",
+  "root_seed": 20261013,
+  "stage_seed": 3133782104,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 16,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-mdcd-pilot-02",
+    "gcs": "gs://mdcd-pilot-02-docs",
+    "vector_index": "kb-mdcd-pilot-02"
+  },
+  "consumes_refs": "s3 providers, s4 members and enrollments",
+  "entities": [
+    "claim_header",
+    "claim_line",
+    "claim_denial",
+    "claim_pend"
+  ],
+  "volumes": {
+    "claims": 600000,
+    "authorizations": 30000
+  },
+  "denial_rate": 0.1,
+  "scenario_mix": [
+    {
+      "scenario_id": "MBN-01",
+      "share_pct": 21.3
+    },
+    {
+      "scenario_id": "MBN-02",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MBN-03",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MBN-04",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPS-01",
+      "share_pct": 21.3
+    },
+    {
+      "scenario_id": "MPS-02",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPS-03",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPS-04",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPC-01",
+      "share_pct": 21.3
+    },
+    {
+      "scenario_id": "MPC-02",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPC-03",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MPC-04",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MAS-01",
+      "share_pct": 21.3
+    },
+    {
+      "scenario_id": "MAS-02",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MAS-03",
+      "share_pct": 1.3
+    },
+    {
+      "scenario_id": "MAS-04",
+      "share_pct": 1.3
+    }
+  ],
+  "rules": [
+    "R-03",
+    "R-07",
+    "F-01",
+    "F-02",
+    "F-05",
+    "T-02",
+    "T-03",
+    "T-04"
+  ]
+}

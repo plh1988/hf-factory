@@ -1,0 +1,12 @@
+.venv/
+.git/
+.env
+out/
+tests/
+postman/
+docs/
+scripts/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+*.egg-info/

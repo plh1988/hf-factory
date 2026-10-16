@@ -82,7 +82,7 @@ def test_fault_injection_from_payload():
 
 def test_unimplemented_use_case_is_rejected():
     client, _ = new_client()
-    p = small_payloads(100, tenant="mbn")
+    p = small_payloads(100, tenant="mrx")
     run_all(client, p, api=False)
-    r = client.post("/factory/api-engine/s8", json={**p["s8"], "use_cases": ["PCS", "MBN"], "endpoints": None})
+    r = client.post("/factory/api-engine/s8", json={**p["s8"], "use_cases": ["PCS", "MRX"], "endpoints": None})
     assert r.status_code == 422 and r.json()["error"] == "USE_CASES_NOT_IMPLEMENTED"

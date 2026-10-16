@@ -74,10 +74,19 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     sex = rr.choice("sex", ["F", "M", "U"], [55, 44.5, 0.5])
     first = np.where(sex == "F", rr.choice("first_f", catalog.FIRST_F), rr.choice("first_m", catalog.FIRST_M))
     last = rr.choice("last", catalog.LAST)
-    place_idx = rr.integers("place", 0, len(catalog.PLACES))
+    geo_mix = dist.get("geo_mix")
+    if geo_mix:  # payload geo mix: pick URBAN / SUBURBAN / RURAL first, then a place of that type
+        geo = rr.choice("geo", list(geo_mix), list(geo_mix.values()))
+    else:
+        geo = np.array([catalog.PLACES[i][5] for i in rr.integers("geo_place", 0, len(catalog.PLACES))], dtype=object)
+    geo = np.where(scen == "MPS-02", "RURAL", geo)
+    by_geo = {g: [i for i, pl in enumerate(catalog.PLACES) if pl[5] == g] for g in ("URBAN", "SUBURBAN", "RURAL")}
+    u_place = rr.u("place")
+    place_idx = np.array([by_geo[g][min(int(u * len(by_geo[g])), len(by_geo[g]) - 1)] for g, u in zip(geo, u_place)], dtype=np.int64)
     places = [catalog.PLACES[p] for p in place_idx]
     lang_mix = dist.get("language_mix") or {"EN": 85, "ES": 10, "OTHER": 5}
     lang = rr.choice("lang", list(lang_mix), list(lang_mix.values()))
+    lang = np.where(scen == "MPS-02", "ES", lang)
     channel = rr.choice("channel", ["VOICE", "CHAT", "SMS"], [55, 30, 15])
     needs = [[a for a, f in (("HEARING", h), ("LARGE_PRINT", v), ("INTERPRETER", i)) if f] for h, v, i in
              zip(rr.bernoulli("hearing", np.where(lob == "MEDICARE_ADV", 0.15, 0.03)),
@@ -150,7 +159,8 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
         has = pcp != None  # noqa: E711 - object array comparison
         span_end = np.where(np.isnat(term), ctx.as_of, term)
         a_status = np.where(np.isnat(term), "ACTIVE", "ENDED")
-        switch = has & rr.bernoulli("pcp_switch", 0.2) & ((span_end - eff) > 2 * DAY)
+        forced_switch = np.isin(scen, ["MPC-02", "MPC-03"])
+        switch = has & (rr.bernoulli("pcp_switch", 0.2) | forced_switch) & ((span_end - eff) > 2 * DAY)
         sw_dt = eff + np.floor(rr.u("switch_at") * ((span_end - eff).astype(int) - 1)).astype("timedelta64[D]") + DAY
         old_pcp = pick(pcps, plan_id, rr.u("old_pcp"))
         cur_eff = np.where(switch, sw_dt, eff)
@@ -163,11 +173,13 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
             "plan_id": pa.array(np.concatenate([plan_id[keep], plan_id[sk]]).tolist()),
             "effective_dt": dates(np.concatenate([cur_eff[keep], eff[sk]])),
             "term_dt": dates(np.concatenate([term[keep], sw_dt[sk] - DAY])),
-            "assignment_type": pa.array(np.concatenate([rr.choice("atype", ["MEMBER_SELECTED", "AUTO_ASSIGNED"], [70, 30])[keep],
+            "assignment_type": pa.array(np.concatenate([np.where(scen == "MPC-02", "AUTO_ASSIGNED",
+                                                                 rr.choice("atype", ["MEMBER_SELECTED", "AUTO_ASSIGNED"], [70, 30]))[keep],
                                                         np.full(sk.sum(), "MEMBER_SELECTED", dtype=object)]).tolist()),
             "status": pa.array(np.concatenate([a_status[keep], np.full(sk.sum(), "ENDED", dtype=object)]).tolist()),
             "change_reason": pa.array(np.concatenate([np.full(keep.sum(), None, dtype=object),
-                                                      rr.choice("reason", ["MOVED", "PROVIDER_TERMED", "PREFERENCE", "ACCESS"])[sk]]).tolist(), pa.string()),
+                                                      np.where(scen == "MPC-02", "PROVIDER_TERMED", np.where(scen == "MPC-03", "MOVED",
+                                                               rr.choice("reason", ["MOVED", "PROVIDER_TERMED", "PREFERENCE", "ACCESS"])))[sk]]).tolist(), pa.string()),
         }, scenario=np.concatenate([scen[keep], scen[sk]]))
 
     # ---- risk scores: HCC RAF + LACE per member
@@ -191,6 +203,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     # ---- care gaps (open or excluded; closing needs a paid claim, R-09)
     if ctx.wants("care_gap"):
         k = np.minimum(rr.poisson("gaps", 0.9), 3)
+        k = np.where(scen == "MAS-02", np.maximum(k, 1), k)
         gi = np.repeat(np.arange(n), k)
         gj = np.concatenate([np.arange(c) for c in k]) if len(gi) else np.array([], int)
         grr = RowRandom(ctx.seed, "care_gap", idx[gi] * 8 + gj)
@@ -200,20 +213,24 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
             "gap_id": pa.array(ctx.ids("care_gap", idx[gi] * 8 + gj)),
             "member_id": pa.array(member_id[gi].tolist()),
             "measure": pa.array(measure.tolist()),
-            "status": pa.array(grr.choice("status", ["OPEN", "EXCLUDED"], [85, 15]).tolist()),
+            "status": pa.array(np.where((scen[gi] == "MAS-02") & (gj == 0), "OPEN",
+                                        grr.choice("status", ["OPEN", "EXCLUDED"], [85, 15])).tolist()),
             "due_dt": dates(np.full(len(gi), np.datetime64(f"{str(ctx.as_of)[:4]}-12-31"))),
             "closed_by_claim_id": pa.array([None] * len(gi), pa.string()),
         }, scenario=scen[gi])
 
     # ---- SDOH screening
     if ctx.wants("sdoh_indicator"):
-        s = rr.bernoulli("screened", 0.6)
+        transport = np.isin(scen, ["MBN-03", "MAS-02"])
+        s = rr.bernoulli("screened", 0.6) | transport
         pos_rate = np.where(lob == "MEDICAID_MCO", 0.40, 0.18)
+        domain = np.where(transport, "TRANSPORT", rr.choice("sdoh_domain", ["FOOD", "HOUSING", "TRANSPORT", "UTILITIES", "SAFETY", "ISOLATION"]))
+        positive = rr.bernoulli("sdoh_pos", pos_rate) | transport
         ctx.write("sdoh_indicator", {
             "indicator_id": pa.array(ctx.ids("sdoh_indicator", idx[s])),
             "member_id": pa.array(member_id[s].tolist()),
-            "domain": pa.array(rr.choice("sdoh_domain", ["FOOD", "HOUSING", "TRANSPORT", "UTILITIES", "SAFETY", "ISOLATION"])[s].tolist()),
-            "positive": pa.array(rr.bernoulli("sdoh_pos", pos_rate)[s]),
+            "domain": pa.array(domain[s].tolist()),
+            "positive": pa.array(positive[s]),
             "screened_dt": dates(ctx.as_of - rr.integers("screened_dt", 10, 300)[s].astype("timedelta64[D]")),
             "source": pa.array(rr.choice("sdoh_src", ["SCREENER", "CLAIMS_Z_CODE", "SELF_REPORT"])[s].tolist()),
             "referral_status": pa.array(rr.choice("sdoh_ref", ["NONE", "SENT", "CONNECTED"], [60, 25, 15])[s].tolist()),
@@ -221,15 +238,18 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
 
     # ---- household: self row + caregiver for 10% (20% of consents expired)
     if ctx.wants("family_relationship"):
-        cg = rr.bernoulli("caregiver", 0.10)
+        narrow = {sid: catalog.SCENARIOS[sid]["caregiver_scope"] for sid in ("MBN-04", "MPC-04")}
+        forced_cg = np.isin(scen, list(narrow))
+        cg = rr.bernoulli("caregiver", 0.10) | forced_cg
         ci = idx[cg]
         rel = rr.choice("cg_rel", ["ADULT_CHILD", "SPOUSE", "PARENT", "POA"], [55, 25, 15, 5])[cg]
         scope_all = rr.bernoulli("cg_all", 0.3)[cg]
         scopes = [["ALL"] if a else sorted({x, y}) for a, x, y in zip(
             scope_all, rr.choice("cg_s1", ["BENEFITS", "CLAIMS", "BILLING", "PA_STATUS", "APPOINTMENTS", "PCP_CHANGE"])[cg],
             rr.choice("cg_s2", ["BENEFITS", "CLAIMS", "PA_STATUS", "APPOINTMENTS"])[cg])]
+        scopes = [narrow[sc] if sc in narrow else x for sc, x in zip(scen[cg], scopes)]
         c_eff = ctx.as_of - rr.integers("cg_eff", 60, 900)[cg].astype("timedelta64[D]")
-        expired = rr.bernoulli("cg_expired", 0.2)[cg]
+        expired = rr.bernoulli("cg_expired", 0.2)[cg] & ~forced_cg[cg]
         c_exp = np.where(expired, ctx.as_of - rr.integers("cg_exp_past", 1, 50)[cg].astype("timedelta64[D]"),
                          ctx.as_of + rr.integers("cg_exp_future", 30, 700)[cg].astype("timedelta64[D]"))
         n_c = int(cg.sum())
@@ -245,14 +265,30 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
             "authorization_scope": pa.array([[]] * n + scopes, pa.list_(pa.string())),
             "consent_effective_dt": dates(np.concatenate([np.full(n, np.datetime64("NaT", "D"), "datetime64[D]"), c_eff])),
             "consent_expiry_dt": dates(np.concatenate([np.full(n, np.datetime64("NaT", "D"), "datetime64[D]"), c_exp])),
-            "verified": pa.array(np.concatenate([np.ones(n, bool), rr.bernoulli("cg_verified", 0.9)[cg]])),
+            "verified": pa.array(np.concatenate([np.ones(n, bool), rr.bernoulli("cg_verified", 0.9)[cg] | forced_cg[cg]])),
         }, scenario=np.concatenate([scen, scen[cg]]))
 
 
+def prepare(ctx: GenContext) -> dict:
+    """Read what every task needs once: plans by LOB and eligible PCPs per plan."""
+    return {"plans_by_lob": load_plans(ctx), "pcps": load_pcps(ctx) if ctx.wants("pcp_assignment") else {}}
+
+
+def task_count(ctx: GenContext) -> int:
+    return len(ctx.shard_ranges(int(ctx.spec.volumes["members"])))
+
+
+def run_task(ctx: GenContext, index: int, prep: dict) -> None:
+    """Generate one shard (a member index range). Safe to re-run: rows are upserted on deterministic ids."""
+    lo, hi = ctx.shard_ranges(int(ctx.spec.volumes["members"]))[index]
+    gen_shard(ctx, lo, hi, prep["plans_by_lob"], prep["pcps"])
+
+
+ENTITIES = ["member_demographics", "plan_enrollment", "pcp_assignment", "risk_score", "care_gap", "sdoh_indicator", "family_relationship"]
+
+
 def run(ctx: GenContext) -> list[str]:
-    plans_by_lob = load_plans(ctx)
-    pcps = load_pcps(ctx) if ctx.wants("pcp_assignment") else {}
-    for lo, hi in ctx.shard_ranges(int(ctx.spec.volumes["members"])):
-        gen_shard(ctx, lo, hi, plans_by_lob, pcps)
-    return [e for e in ["member_demographics", "plan_enrollment", "pcp_assignment", "risk_score", "care_gap",
-                        "sdoh_indicator", "family_relationship"] if ctx.wants(e)]
+    prep = prepare(ctx)
+    for i in range(task_count(ctx)):
+        run_task(ctx, i, prep)
+    return [e for e in ENTITIES if ctx.wants(e)]

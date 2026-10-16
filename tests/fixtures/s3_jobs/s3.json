@@ -1,0 +1,32 @@
+{
+  "job": "generate_reference_data",
+  "stage": "s3",
+  "root_seed": 20261014,
+  "stage_seed": 3187313213,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 32,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-perf-claims-03",
+    "gcs": "gs://perf-claims-03-docs",
+    "vector_index": "kb-perf-claims-03"
+  },
+  "entities": [
+    "plan",
+    "provider",
+    "network_participation",
+    "practice_location"
+  ],
+  "volumes": {
+    "providers": 1620,
+    "plans": 4,
+    "access_standards": 120
+  },
+  "rules": [
+    "R-04",
+    "F-04",
+    "P-02"
+  ]
+}

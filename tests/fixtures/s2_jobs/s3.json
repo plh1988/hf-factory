@@ -1,0 +1,35 @@
+{
+  "job": "generate_reference_data",
+  "stage": "s3",
+  "root_seed": 20261013,
+  "stage_seed": 3234447818,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 16,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-mdcd-pilot-02",
+    "gcs": "gs://mdcd-pilot-02-docs",
+    "vector_index": "kb-mdcd-pilot-02"
+  },
+  "entities": [
+    "plan",
+    "provider",
+    "network_participation",
+    "practice_location",
+    "availability_schedule",
+    "provider_rating",
+    "access_standard"
+  ],
+  "volumes": {
+    "providers": 1080,
+    "plans": 4,
+    "access_standards": 120
+  },
+  "rules": [
+    "R-04",
+    "F-04",
+    "P-02"
+  ]
+}

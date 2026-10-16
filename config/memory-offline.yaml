@@ -11,3 +11,7 @@ llm:
   model: offline-template-v1
   embedding_model: hashed-bow-v1
   embedding_dim: 256
+# Keeps in-memory runs to a manageable size (about 1-1.5M rows). Larger payloads get HTTP 413.
+limits:
+  max_members: 60000
+  max_claims: 200000
