@@ -12,6 +12,7 @@ from factory.data_engine.context import GenContext, dates
 from factory.data_engine.rng import RowRandom
 
 DAY = np.timedelta64(1, "D")
+ENROLLMENT_LOOKBACK_MONTHS = 12
 
 
 def month_start(d: np.ndarray) -> np.ndarray:
@@ -54,7 +55,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     idx = np.arange(lo, hi)
     n = len(idx)
     rr = ctx.rr("member_demographics", idx)
-    dist = ctx.bp.data_spec.distributions
+    dist = ctx.spec.distributions
     lob_mix = dist.get("lob_mix", {"COMMERCIAL": 1})
     lob = rr.choice("lob", list(lob_mix), list(lob_mix.values()))
     plan_id = pick(plans_by_lob, lob, rr.u("plan"))
@@ -113,7 +114,8 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     }, scenario=scen)
 
     # ---- enrollment (current span + 15% prior span)
-    hist_start = ctx.as_of - np.timedelta64(ctx.bp.data_spec.history_months * 31, "D")
+    # enrollments start at least 12 months back, so any claims window up to 12 months is covered
+    hist_start = ctx.as_of - np.timedelta64(ENROLLMENT_LOOKBACK_MONTHS * 31, "D")
     eff = month_start(hist_start - rr.integers("enroll_back", 0, 900).astype("timedelta64[D]"))
     status = np.full(n, "ACTIVE", dtype=object)
     term = np.full(n, np.datetime64("NaT", "D"), dtype="datetime64[D]")
@@ -250,7 +252,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
 def run(ctx: GenContext) -> list[str]:
     plans_by_lob = load_plans(ctx)
     pcps = load_pcps(ctx) if ctx.wants("pcp_assignment") else {}
-    for lo, hi in ctx.shard_ranges(ctx.bp.data_spec.volumes.members):
+    for lo, hi in ctx.shard_ranges(int(ctx.spec.volumes["members"])):
         gen_shard(ctx, lo, hi, plans_by_lob, pcps)
     return [e for e in ["member_demographics", "plan_enrollment", "pcp_assignment", "risk_score", "care_gap",
                         "sdoh_indicator", "family_relationship"] if ctx.wants(e)]

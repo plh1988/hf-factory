@@ -35,15 +35,28 @@ def luhn_npi(base9: np.ndarray) -> list[str]:
     return out
 
 
+DEFAULT_LOB_CYCLE = ["MEDICARE_ADV", "COMMERCIAL", "MEDICAID_MCO"]
+
+
+def n_plans(ctx: GenContext) -> int:
+    return int(ctx.spec.volumes.get("plans", N_PLANS))
+
+
 def plan_lobs(ctx: GenContext) -> list[str]:
-    mix = ctx.bp.data_spec.distributions.get("lob_mix", {"COMMERCIAL": 1})
+    """LOB per plan. The spec's s3 payload carries no LOB mix, so by default plans cycle through
+    Medicare Advantage, Commercial and Medicaid; an optional distributions.lob_mix in s3 narrows it."""
+    n = n_plans(ctx)
+    mix = ctx.spec.distributions.get("lob_mix")
+    if not mix:
+        return [DEFAULT_LOB_CYCLE[i % len(DEFAULT_LOB_CYCLE)] for i in range(n)]
     lobs, shares = list(mix), np.array(list(mix.values()), dtype=float)
-    counts = np.maximum(1, np.round(shares / shares.sum() * N_PLANS)).astype(int)
+    counts = np.maximum(1, np.round(shares / shares.sum() * n)).astype(int)
     seq = [lob for lob, c in zip(lobs, counts) for _ in range(c)]
-    return (seq * N_PLANS)[:N_PLANS]
+    return (seq * n)[:n]
 
 
 def gen_plans(ctx: GenContext) -> pa.Table:
+    N_PLANS = n_plans(ctx)  # noqa: N806 - local count shadows the default
     keys = np.arange(N_PLANS)
     lobs = plan_lobs(ctx)
     rows = {k: [] for k in ["network_type", "deductible", "oop_max", "copay_pcp", "copay_specialist", "coinsurance_pct"]}
@@ -79,7 +92,7 @@ def gen_plans(ctx: GenContext) -> pa.Table:
 
 
 def gen_providers(ctx: GenContext) -> pa.Table:
-    n = ctx.bp.data_spec.volumes.providers
+    n = int(ctx.spec.volumes["providers"])
     keys = np.arange(n)
     rr = ctx.rr("provider", keys)
     ptype = rr.choice("type", ["PCP", "SPECIALIST", "FACILITY"], [35, 50, 15])

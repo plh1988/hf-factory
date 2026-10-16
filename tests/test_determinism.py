@@ -1,45 +1,48 @@
-"""Repeatability guarantees from the spec: same blueprint + seed => same checksums, independent of sharding."""
+"""Repeatability: the same payloads give the same data, independent of sharding."""
 
-from conftest import fresh_stores, small_blueprint
+from conftest import checksums, new_client, run_all, small_payloads
 
 from factory.data_engine.rng import checksum, fmt_checksum
-from factory.data_engine.runner import run_data_engine
 
 
 def test_checksums_identical_across_shard_counts():
-    bp = small_blueprint()
-    a = run_data_engine(bp, fresh_stores(), shards=1).manifest.entity_checksums
-    b = run_data_engine(bp, fresh_stores(), shards=5).manifest.entity_checksums
-    assert a == b
+    a, _ = new_client()
+    b, _ = new_client()
+    run_all(a, small_payloads(shards=1), api=False)
+    run_all(b, small_payloads(shards=5), api=False)
+    assert checksums(a, "test-small") == checksums(b, "test-small")
+    ma = a.get("/factory/runs/test-small/manifest").json()
+    mb = b.get("/factory/runs/test-small/manifest").json()
+    assert ma["data_spec_hash"] == mb["data_spec_hash"]  # shards are not part of the data spec
 
 
 def test_replay_is_identical(generated):
-    bp, _, first = generated
-    again = run_data_engine(bp, fresh_stores(), shards=3)
-    assert again.manifest.entity_checksums == first.manifest.entity_checksums
-    assert again.manifest.data_spec_hash == first.manifest.data_spec_hash
+    client, _, _ = generated
+    again, _ = new_client()
+    run_all(again, small_payloads(), api=False)
+    assert checksums(again, "test-small") == checksums(client, "test-small")
 
 
 def test_reseed_changes_rows_but_not_shape(generated):
-    bp, _, first = generated
-    reseeded = small_blueprint(**{"repeatability.root_seed": bp.repeatability.root_seed + 1})
-    run = run_data_engine(reseeded, fresh_stores(), shards=3)
-    assert run.manifest.entity_checksums["member_demographics"] != first.manifest.entity_checksums["member_demographics"]
-    assert run.manifest.entity_counts["member_demographics"] == first.manifest.entity_counts["member_demographics"]
-    assert run.passed
+    client, _, _ = generated
+    other, _ = new_client()
+    resp = run_all(other, small_payloads(seed=20261013), api=False)
+    assert resp["s7"].json()["gate"] == "data_quality_gate PASSED"
+    a, b = checksums(client, "test-small"), checksums(other, "test-small")
+    assert a["member_demographics"] != b["member_demographics"]
+    ma = client.get("/factory/runs/test-small/manifest").json()
+    mb = other.get("/factory/runs/test-small/manifest").json()
+    assert ma["entity_counts"]["member_demographics"] == mb["entity_counts"]["member_demographics"]
+    assert ma["data_spec_hash"] != mb["data_spec_hash"]
 
 
 def test_evolve_is_prefix_stable():
     """Growing members keeps the first N members byte-identical (evolve mode)."""
-    small, big = fresh_stores(), fresh_stores()
-    run_data_engine(small_blueprint(600), small, shards=2)
-    run_data_engine(small_blueprint(800), big, shards=4)
+    small, reg_small = new_client()
+    big, reg_big = new_client()
+    run_all(small, small_payloads(600), api=False)
+    run_all(big, small_payloads(800), api=False)
     sql = "SELECT * FROM member_demographics WHERE member_number <= 'MBR-0000600'"
-    assert fmt_checksum(checksum(small.tables.query(sql))) == fmt_checksum(checksum(big.tables.query(sql)))
-
-
-def test_blueprint_hash_changes_with_infra_but_data_hash_does_not():
-    a = small_blueprint()
-    b = small_blueprint(**{"infra_spec.region": "us-east4", "tenant.id": "ma-demo-02"})
-    assert a.blueprint_hash != b.blueprint_hash
-    assert a.data_spec_hash == b.data_spec_hash
+    a = reg_small.runs["test-small"].stores.tables.query(sql)
+    b = reg_big.runs["test-small"].stores.tables.query(sql)
+    assert a.num_rows == 600 and fmt_checksum(checksum(a)) == fmt_checksum(checksum(b))

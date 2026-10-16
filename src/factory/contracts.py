@@ -1,7 +1,8 @@
-"""Contracts between factory layers, as shown in the architecture spec.
+"""Contracts: the stage job payloads (as in the architecture spec) and what the engines return.
 
-Only the fields the Data and API engines read are typed; everything else is kept
-(extra="allow") so the blueprint round-trips unchanged.
+The engines take everything from their job payloads; there is no blueprint. A run's settings
+(RunSpec) are assembled from the payloads received so far, starting with s3. Payload models allow
+extra fields so the spec payloads are accepted unchanged.
 """
 
 from __future__ import annotations
@@ -14,16 +15,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Domain names as they appear in the blueprint -> short codes used by the catalog.
-DOMAIN_CODES = {
-    "Member": "M",
-    "Provider": "P",
-    "Claims": "C",
-    "Authorization": "A",
-    "Care Management": "CM",
-    "Knowledge Assets": "K",
-}
-
 
 def canonical_hash(obj: Any) -> str:
     """sha256 over canonical JSON (sorted keys, no whitespace)."""
@@ -35,116 +26,113 @@ class _Open(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class Repeatability(_Open):
-    root_seed: int
-    as_of_date: date
-    catalog_version: str
-    rule_set_version: str
-    generator_version: str
-    id_strategy: str
-
-
-class Tenant(_Open):
-    id: str
-    env: str
-    ttl_hours: int
-
-
-class DomainScope(_Open):
-    domain: str
-    role: Literal["primary", "supporting"]
-    entities: list[str] | None = None
-
-    @property
-    def code(self) -> str:
-        return DOMAIN_CODES[self.domain]
-
-
-class Scope(_Open):
-    use_cases: list[str]
-    personas: list[str]
-    channels: list[str]
-    domains: list[DomainScope]
-
-
+# ---------------------------------------------------------------- job payloads
 class ScenarioShare(BaseModel):
     scenario_id: str
     share_pct: float
 
 
-class Volumes(_Open):
-    members: int
-    providers: int
-    claims: int
-    authorizations: int
+class DataJob(_Open):
+    """Payload for data engine stages s3-s7 (spec section 5, scenario S1)."""
+
+    job: str
+    stage: str
+    root_seed: int | None = None
+    stage_seed: int | None = None
+    as_of_date: date | None = None
+    catalog_version: str | None = None
+    id_strategy: str | None = None
+    shards: int | None = Field(None, ge=1, le=64)
+    consumes: dict[str, Any] = Field(default_factory=dict)
+    entities: list[str] | None = None
+    volumes: dict[str, int] = Field(default_factory=dict)
+    distributions: dict[str, Any] = Field(default_factory=dict)
+    personas: list[str] | None = None
+    scenario_mix: list[ScenarioShare] | None = None
+    denial_rate: float | None = Field(None, ge=0, le=1)
+    rules: list[str] | None = None
+    llm: dict[str, Any] | None = None
+    rule_sets: list[str] | None = None
+    privacy_scan: dict[str, bool] | None = None
+    # optional extensions (not in the spec payloads)
+    tenant_id: str | None = None
+    history_months: int | None = Field(None, ge=1, le=60)
+    use_cases: list[str] | None = None
+
+    def tenant_hint(self) -> str | None:
+        alloy = self.consumes.get("alloydb")
+        if self.tenant_id:
+            return self.tenant_id
+        if isinstance(alloy, str) and alloy.startswith("alloy-"):
+            return alloy[len("alloy-"):]
+        return None
 
 
-class DataSpec(_Open):
-    dataset_id: str
-    volumes: Volumes
-    history_months: int = 12
-    distributions: dict[str, Any]
-    scenario_mix: list[ScenarioShare]
-    edge_case_pct: float
-    rule_sets: list[str]
+class Endpoint(BaseModel):
+    method: str
+    path: str
+    use_case: str
 
 
 class FaultInjection(BaseModel):
-    error_rate_pct: float = 0
-    latency_p95_ms: int = 0
+    error_rate_pct: float = Field(0, ge=0, le=100)
+    latency_p95_ms: int = Field(0, ge=0, le=60000)
 
 
-class ApiSpec(_Open):
+class ApiJob(_Open):
+    """Payload for API engine stage s8."""
+
+    job: str
+    stage: str
+    style: str | None = None
     base_path: str = "/v1"
-    auth: str
+    use_cases: list[str]
+    consumes: dict[str, Any] = Field(default_factory=dict)
+    endpoints: list[Endpoint] | None = None
+    auth: dict[str, Any] = Field(default_factory=lambda: {"type": "OAuth2 client credentials"})
+    rate_limit: dict[str, int] = Field(default_factory=lambda: {"per_client_rpm": 600})
     fault_injection: FaultInjection = FaultInjection()
+    agent_tools: bool = True
+    tenant_id: str | None = None
+
+    def tenant_hint(self) -> str | None:
+        alloy = self.consumes.get("alloydb")
+        if self.tenant_id:
+            return self.tenant_id
+        if isinstance(alloy, str) and alloy.startswith("alloy-"):
+            return alloy[len("alloy-"):]
+        return None
 
 
-class InfraSpec(_Open):
-    cloud: Literal["GCP"]
-    region: str
-    tier: str
-    sizing: dict[str, Any]
+# ---------------------------------------------------------------- run settings built from payloads
+class RunSpec(BaseModel):
+    """Everything the data engine knows about a run, taken only from the payloads received."""
 
+    tenant_id: str
+    dataset_id: str
+    root_seed: int
+    as_of_date: date
+    catalog_version: str
+    id_strategy: str
+    entities: set[str] = Field(default_factory=set)
+    volumes: dict[str, int] = Field(default_factory=dict)
+    distributions: dict[str, Any] = Field(default_factory=dict)
+    scenario_mix: list[ScenarioShare] = Field(default_factory=list)
+    history_months: int | None = None
+    use_cases: list[str] = Field(default_factory=list)
+    payload_hashes: dict[str, str] = Field(default_factory=dict)
 
-class Blueprint(_Open):
-    blueprint_id: str
-    blueprint_version: str
-    repeatability: Repeatability
-    tenant: Tenant
-    scope: Scope
-    data_spec: DataSpec
-    infra_spec: InfraSpec
-    api_spec: ApiSpec
-
-    @property
-    def blueprint_hash(self) -> str:
-        return canonical_hash(self.model_dump(mode="json"))
-
-    @property
     def data_spec_hash(self) -> str:
-        """Hash of everything that affects generated data (not infra, not API)."""
-        r = self.repeatability
-        core = {
-            "dataset_id": self.data_spec.dataset_id,
-            "root_seed": r.root_seed,
-            "as_of_date": r.as_of_date,
-            "catalog_version": r.catalog_version,
-            "rule_set_version": r.rule_set_version,
-            "generator_version": r.generator_version,
-            "use_cases": self.scope.use_cases,
-            "domains": [d.model_dump(mode="json") for d in self.scope.domains],
-            "data_spec": self.data_spec.model_dump(mode="json"),
-        }
-        return canonical_hash(core)
+        """Hash of the data-affecting payloads s3-s6 (shards excluded: they never change the data)."""
+        return canonical_hash({k: v for k, v in sorted(self.payload_hashes.items()) if k in ("s3", "s4", "s5", "s6")})
 
-    @classmethod
-    def load(cls, path: str | Path) -> "Blueprint":
-        return cls.model_validate_json(Path(path).read_text(encoding="utf-8"))
+
+def payload_hash(payload: dict[str, Any]) -> str:
+    return canonical_hash({k: v for k, v in payload.items() if k not in ("shards", "tenant_id")})
 
 
 class S2Output(_Open):
-    """Outputs of infra stage s2: where the data stores live."""
+    """Outputs of infra stage s2: where the data stores live (used by the gcp profile)."""
 
     project_id: str | None = None
     region: str
@@ -159,22 +147,7 @@ class S2Output(_Open):
         return cls.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
 
-class StageJobSpec(_Open):
-    """What the orchestrator sends to an engine for one stage."""
-
-    job: str
-    stage: str
-    root_seed: int
-    stage_seed: int
-    as_of_date: date
-    catalog_version: str
-    id_strategy: str
-    shards: int
-    entities: list[str] = Field(default_factory=list)
-    rules: list[str] = Field(default_factory=list)
-    consumes: dict[str, Any] = Field(default_factory=dict)
-
-
+# ---------------------------------------------------------------- results
 class EntityResult(BaseModel):
     entity: str
     rows: int
@@ -192,8 +165,10 @@ class StageResult(_Open):
 
 
 class Manifest(_Open):
-    blueprint_hash: str
+    tenant_id: str
+    dataset_id: str
     data_spec_hash: str
+    payload_hashes: dict[str, str]
     root_seed: int
     as_of_date: date
     catalog_version: str

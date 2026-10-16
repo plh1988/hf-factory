@@ -193,7 +193,7 @@ def write_faq_sop_links_golden(ctx: GenContext, specs: list[AssetSpec], a_ids: l
     manual = next(s for s in specs if s.asset_type == "PROVIDER_MANUAL")
 
     faq_rows, sop_rows, gold_rows = [], [], []
-    for uc in ctx.bp.scope.use_cases:
+    for uc in ctx.spec.use_cases:
         if uc not in catalog.USE_CASES:
             continue
         info, n = catalog.USE_CASES[uc], USE_CASE_ORDER.index(uc)

@@ -1,4 +1,4 @@
-"""Runs Data Engine stages s3-s7, one at a time (REST jobs) or all in order (CLI).
+"""Runs Data Engine stages s3-s7, one REST job at a time.
 
 run_stage() is the single entry point for a stage: it resets that stage's counters (so re-runs are
 idempotent), runs the generator, checks the rules the job names, and publishes progress events."""
@@ -9,8 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from factory.adapters.ports import Stores
-from factory.contracts import Blueprint, EntityResult, Manifest, StageJobSpec, StageResult
+from factory.contracts import EntityResult, Manifest, StageResult
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext
 from factory.data_engine.rng import fmt_checksum
@@ -50,17 +49,6 @@ class DataEngineRun:
     @property
     def passed(self) -> bool:
         return bool(self.manifest) and self.report.get("failed", 1) == 0 and self.privacy.get("status") == "PASS"
-
-
-def job_spec(bp: Blueprint, stage: str, shards: int, stores: Stores) -> StageJobSpec:
-    r = bp.repeatability
-    job, rules, _ = STAGES[stage]
-    return StageJobSpec(
-        job=job, stage=stage, root_seed=r.root_seed, stage_seed=stage_seed(r.root_seed, stage),
-        as_of_date=r.as_of_date, catalog_version=r.catalog_version, id_strategy=r.id_strategy, shards=shards,
-        entities=catalog.STAGE_ENTITIES.get(stage, []), rules=rules,
-        consumes={"tables": stores.tables.uri, "llm": stores.llm.model},
-    )
 
 
 def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, rule_sets: list[str] | None = None,
@@ -113,16 +101,3 @@ def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, ru
     stores.events.publish(TOPIC, {"stage": stage, "state": "COMPLETED", "duration_s": res.duration_s,
                                   "rows": sum(e.rows for e in res.entities)})
     return res
-
-
-def run_data_engine(bp: Blueprint, stores: Stores, shards: int = 4) -> DataEngineRun:
-    """All stages in order (CLI and tests)."""
-    ctx = GenContext(bp, stores, shards=shards)
-    missing = ctx.unimplemented()
-    if missing:
-        raise DataEngineError(f"blueprint asks for entities without a v1 generator: {missing}")
-    run = DataEngineRun()
-    for stage in STAGES:
-        stores.blobs.put(f"jobs/{stage}.json", job_spec(bp, stage, shards, stores).model_dump_json(indent=2).encode(), "application/json")
-        run_stage(ctx, stage, run=run)
-    return run

@@ -53,7 +53,7 @@ def test_profile_variable_switches_backends(monkeypatch):
     assert type(build_stores(load_profile()).tables).__name__ == "DuckDBTableStore"
 
     monkeypatch.setenv("FACTORY_PROFILE", "gcp")
-    s2 = S2Output.load("blueprints/s2_output_gcp.example.json")
+    s2 = S2Output.load("config/s2_output_gcp.example.json")
     stores = build_stores(load_profile(s2=s2))
     assert isinstance(stores.tables, AlloyDBTableStore)
     assert stores.tables.uri.endswith("instances/primary")

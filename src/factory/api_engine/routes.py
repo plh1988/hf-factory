@@ -1,4 +1,4 @@
-"""Endpoint catalog. One router per use case; the blueprint decides which routers are mounted."""
+"""Endpoint catalog. One router per use case; the s8 job payload decides which routers are mounted."""
 
 from __future__ import annotations
 

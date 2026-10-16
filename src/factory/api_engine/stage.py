@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from factory.adapters.ports import Stores
 from factory.api_engine.app import create_app, tool_manifest
-from factory.contracts import Blueprint, StageResult
+from factory.contracts import ApiJob, Manifest, StageResult
 
 NO_FAULTS = {"x-fault-injection": "off"}
 
@@ -29,20 +29,20 @@ def _sample(stores: Stores, sql: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def contract_tests(app: FastAPI, bp: Blueprint, stores: Stores) -> list[dict[str, Any]]:
+def contract_tests(app: FastAPI, job: ApiJob, stores: Stores, as_of: str) -> list[dict[str, Any]]:
     """Four tests per enabled endpoint: happy path, not found / negative, no token, scenario or validation case."""
     client = TestClient(app)
     creds = json.loads(stores.blobs.get("secrets/api-client.json"))
     tok = client.post("/oauth/token", data={"grant_type": "client_credentials", **creds}).json()["access_token"]
     auth = {"Authorization": f"Bearer {tok}", **NO_FAULTS}
-    base = bp.api_spec.base_path
+    base = job.base_path
     tests: list[tuple[str, str, Callable[[], Any], Callable[[Any], bool]]] = []
 
     def add(endpoint: str, name: str, call: Callable[[], Any], check: Callable[[Any], bool]) -> None:
         tests.append((endpoint, name, call, check))
 
     prov_of = "SELECT npi, tin FROM provider WHERE npi = '{npi}'"
-    if "PCS" in bp.scope.use_cases:
+    if "PCS" in job.use_cases:
         c = _sample(stores, "SELECT claim_number, billing_npi FROM claim_header WHERE status = 'PAID' ORDER BY claim_number")
         p = _sample(stores, prov_of.format(npi=c["billing_npi"]))
         pend = _sample(stores, "SELECT claim_number, billing_npi FROM claim_header WHERE scenario_id = 'PCS-02' ORDER BY claim_number")
@@ -63,7 +63,7 @@ def contract_tests(app: FastAPI, bp: Blueprint, stores: Stores) -> list[dict[str
                 f"{base}/claims/{pend['claim_number']}/status?npi={pp['npi']}&tin={pp['tin']}", headers=auth),
                 lambda r: r.status_code == 200 and r.json()["pend_reason"] == "RECORDS_REQUEST" and r.json()["info_needed_from"] == "PROVIDER")
 
-    if "PAS" in bp.scope.use_cases:
+    if "PAS" in job.use_cases:
         a = _sample(stores, "SELECT auth_number, requesting_npi FROM auth_request WHERE scenario_id = 'PAS-01' ORDER BY auth_number") or \
             _sample(stores, "SELECT auth_number, requesting_npi FROM auth_request ORDER BY auth_number")
         ap = _sample(stores, prov_of.format(npi=a["requesting_npi"]))
@@ -98,12 +98,12 @@ def contract_tests(app: FastAPI, bp: Blueprint, stores: Stores) -> list[dict[str
                                                                json={**body, "doc_type": "SELFIE"}, headers=auth),
             lambda r: r.status_code == 422)
 
-    if "PEV" in bp.scope.use_cases:
+    if "PEV" in job.use_cases:
         m = _sample(stores, "SELECT m.member_number FROM member_demographics m JOIN plan_enrollment e ON e.member_id = m.member_id "
-                            "WHERE e.status = 'ACTIVE' AND m.scenario_id = 'PEV-01' ORDER BY m.member_number")
+                            "WHERE e.status = 'ACTIVE' AND m.scenario_id IN ('PEV-01', 'BASE') ORDER BY m.member_number")
         m2 = _sample(stores, "SELECT member_number FROM member_demographics WHERE scenario_id = 'PEV-02' ORDER BY member_number")
         op = _sample(stores, "SELECT npi, tin FROM provider WHERE status = 'ACTIVE' ORDER BY npi")
-        dos = str(bp.repeatability.as_of_date)
+        dos = as_of
         ep = f"POST {base}/eligibility/verify"
         req = {"npi": op["npi"], "tin": op["tin"], "date_of_service": dos, "member_id": m["member_number"]}
         add(ep, "active member is eligible with cost share", lambda: client.post(f"{base}/eligibility/verify", json=req, headers=auth),
@@ -153,28 +153,25 @@ def contract_tests(app: FastAPI, bp: Blueprint, stores: Stores) -> list[dict[str
     return out
 
 
-def run_api_engine(bp: Blueprint, stores: Stores, manifest_uri: str | None, job: dict[str, Any] | None = None) -> ApiEngineRun:
-    """job = the s8 payload (rate_limit, fault_injection override the blueprint); None = blueprint defaults."""
-    job = job or {}
+def run_api_engine(job: ApiJob, stores: Stores, manifest: Manifest, manifest_uri: str | None) -> ApiEngineRun:
+    """Stage s8 from its payload. Tenant, seed and as-of date come from the s7 manifest the job consumes."""
     t0 = time.perf_counter()
     stores.events.publish("scenario-events", {"stage": "s8", "job": "api_generate_and_deploy", "state": "STARTED"})
-    app = create_app(bp, stores, rate_limit_rpm=(job.get("rate_limit") or {}).get("per_client_rpm"),
-                     fault_settings=job.get("fault_injection"))
+    app = create_app(job, stores, tenant_id=manifest.tenant_id, seed=manifest.root_seed)
     spec = app.openapi()
     openapi_uri = stores.blobs.put("api/openapi.json", json.dumps(spec, indent=2).encode(), "application/json")
-    tools = tool_manifest(spec, bp.api_spec.base_path)
-    tools_uri = stores.blobs.put("api/tools.json", json.dumps(tools, indent=2).encode(), "application/json")
-    tests = contract_tests(app, bp, stores)
+    tools = tool_manifest(spec, job.base_path) if job.agent_tools else []
+    tools_uri = stores.blobs.put("api/tools.json", json.dumps(tools, indent=2).encode(), "application/json") if job.agent_tools else None
+    tests = contract_tests(app, job, stores, manifest.as_of_date.isoformat())
     passed = sum(t["passed"] for t in tests)
-    deployment = stores.deployer.deploy(bp.tenant.id, bp.api_spec.base_path)
+    deployment = stores.deployer.deploy(manifest.tenant_id, job.base_path)
     result = StageResult(
         stage="s8", status="DEPLOYED" if passed == len(tests) else "FAILED", duration_s=round(time.perf_counter() - t0, 2),
         gateway_url=deployment.gateway_url, revision=deployment.revision, target=deployment.target,
-        openapi_uri=openapi_uri, tool_manifest_uri=tools_uri, endpoint_count=len(tools), tools_published=len(tools),
+        openapi_uri=openapi_uri, tool_manifest_uri=tools_uri, endpoint_count=len(spec["paths"]) - 1, tools_published=len(tools),
         contract_tests={"total": len(tests), "passed": passed}, credentials_secret_ref=app.state.clients.secret_ref,
         rate_limit={"per_client_rpm": app.state.limiter.per_minute},
-        fault_injection={**bp.api_spec.fault_injection.model_dump(), **(job.get("fault_injection") or {})},
-        agent_tools=True,
+        fault_injection=job.fault_injection.model_dump(), agent_tools=job.agent_tools,
         consumes={"tables": stores.tables.uri, "manifest": manifest_uri},
         error=None if passed == len(tests) else "contract tests failed",
     )

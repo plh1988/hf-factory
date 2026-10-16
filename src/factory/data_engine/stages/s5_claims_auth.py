@@ -96,12 +96,11 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     midx = np.array([int(x[4:]) - 1 for x in m["member_number"]], dtype=np.int64)
     rr = ctx.rr("claim_header:count", midx)
     eff, term = to_date(m["effective_dt"]), to_date(m["term_dt"])
-    hist_start = ctx.as_of - np.timedelta64(ctx.bp.data_spec.history_months * 31, "D")
+    hist_start = ctx.as_of - np.timedelta64(int(ctx.spec.history_months or 12) * 31, "D")
     w_start = np.maximum(eff, hist_start)
     w_end = np.minimum(np.where(np.isnat(term), ctx.as_of, term), ctx.as_of - 3 * DAY)
     span = (w_end - w_start).astype(int)
-    vol = ctx.bp.data_spec.volumes
-    lam = vol.claims / max(vol.members, 1)
+    lam = ctx.spec.volumes["claims"] / max(len(inp["members"]["member_id"]), 1)
     k = np.where(span >= 0, np.minimum(rr.poisson("n_claims", lam), 20), 0)
 
     ci = np.repeat(np.arange(len(midx)), k)
@@ -139,7 +138,7 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     network = np.where(in_net, "IN", np.where(emergency, "OON_EMERGENCY", "OON"))
 
     # status: scenario recipes first, then baseline denial/pend rates
-    denial_rate = float(ctx.bp.data_spec.distributions.get("denial_rate", 0.10))
+    denial_rate = float(ctx.spec.distributions.get("denial_rate", 0.10))
     deny = (ctype != "PHARMACY") & crr.bernoulli("deny", denial_rate)
     pend = crr.bernoulli("pend", 0.05)
     status = np.where(deny, "DENIED", np.where(pend, "PENDED", "PAID")).astype(object)
@@ -236,8 +235,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     lk = np.where(c["needs_pa"])[0]
     # standalone
     rr = ctx.rr("auth_request:count", midx)
-    vol = ctx.bp.data_spec.volumes
-    k = np.minimum(rr.poisson("n_auths", vol.authorizations / max(vol.members, 1) * 0.5), 5)
+    k = np.minimum(rr.poisson("n_auths", ctx.spec.volumes.get("authorizations", 0) / max(len(inp["members"]["member_id"]), 1) * 0.5), 5)
     si = np.repeat(np.arange(len(midx)), k)
     sj = np.concatenate([np.arange(x) for x in k]) if len(si) else np.array([], np.int64)
 

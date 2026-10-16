@@ -37,7 +37,7 @@ class LocalDeployer:
 
 class CloudRunDeployer:
     impl_note = (
-        "google-cloud-run: deploy pinned api-backend image with FACTORY_PROFILE=gcp, tenant blueprint "
+        "google-cloud-run: deploy pinned api-backend image with FACTORY_PROFILE=gcp and the s7 manifest "
         "and s2 output refs; google-cloud-api-gateway: API config from openapi (check OpenAPI 2.0 requirement)"
     )
 

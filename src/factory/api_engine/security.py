@@ -16,7 +16,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from factory.adapters.ports import Stores
-from factory.contracts import Blueprint
 
 TOKEN_TTL_S = 3600
 
@@ -29,9 +28,9 @@ class ClientRegistry:
     """One API client per tenant. The secret is stored as a blob (stand-in for Secret Manager);
     callers receive only its reference."""
 
-    def __init__(self, bp: Blueprint, stores: Stores) -> None:
-        self.client_id = f"{bp.tenant.id}-agent"
-        self.secret = hashlib.sha256(f"{bp.repeatability.root_seed}:{bp.tenant.id}:client".encode()).hexdigest()[:32]
+    def __init__(self, tenant_id: str, seed: int, stores: Stores) -> None:
+        self.client_id = f"{tenant_id}-agent"
+        self.secret = hashlib.sha256(f"{seed}:{tenant_id}:client".encode()).hexdigest()[:32]
         self.secret_ref = stores.blobs.put(
             "secrets/api-client.json",
             json.dumps({"client_id": self.client_id, "client_secret": self.secret}).encode(),
@@ -79,7 +78,7 @@ def require_client(request: Request, cred: HTTPAuthorizationCredentials | None =
 
 
 class FaultInjection(BaseHTTPMiddleware):
-    """Seeded error and latency injection on /v1 business endpoints (blueprint api_spec.fault_injection)."""
+    """Seeded error and latency injection on /v1 business endpoints (s8 payload fault_injection)."""
 
     def __init__(self, app, error_rate_pct: float, latency_p95_ms: int, seed: int, enabled: bool) -> None:
         super().__init__(app)

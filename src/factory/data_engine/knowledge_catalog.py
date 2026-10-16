@@ -1,4 +1,4 @@
-"""Deterministic list of knowledge assets for a blueprint.
+"""Deterministic list of knowledge assets for a run.
 
 Asset keys are fixed by type and position, so any stage can compute an asset's ID
 (e.g. s5 links auth determinations to PA policies before s6 writes the documents).
@@ -79,7 +79,7 @@ def asset_specs(ctx, plans: list[dict]) -> list[AssetSpec]:
             "Appealable denials can be appealed within 60 days for Medicare Advantage and Medicaid, 180 days for commercial plans",
         ], links=[("DENIAL_CODE", f"CO-{carc}")]))
 
-    for uc in ctx.bp.scope.use_cases:
+    for uc in ctx.spec.use_cases:
         if uc not in catalog.USE_CASES:
             continue
         info = catalog.USE_CASES[uc]

@@ -38,7 +38,7 @@ PRIMARY_KEY: dict[str, str] = {
     "asset_link": "link_id", "qa_golden": "qa_id",
 }
 
-# Entities with a generator in v1. Anything else in a blueprint fails fast.
+# Entities with a generator in v1. A payload naming anything else is rejected.
 IMPLEMENTED = set(PRIMARY_KEY)
 
 # Which stage generates which entity. v1 runs s6 after s5 (design doc, gap 1) and derives

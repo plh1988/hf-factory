@@ -1,4 +1,4 @@
-"""Shared state for one data-engine run: blueprint, stores, scenario mix, write helper."""
+"""Shared state for one data-engine run: run spec (from job payloads), stores, scenario mix, write helper."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import pyarrow as pa
 
 from factory.adapters.ports import Stores
-from factory.contracts import Blueprint
+from factory.contracts import RunSpec
 from factory.data_engine import catalog
 from factory.data_engine.rng import RowRandom, checksum, row_ids
 
@@ -26,27 +26,22 @@ def stamps(values: np.ndarray) -> pa.Array:
 
 @dataclass
 class GenContext:
-    bp: Blueprint
+    spec: RunSpec
     stores: Stores
     shards: int = 4
     checksums: dict[str, int] = field(default_factory=dict)
     counts: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        r = self.bp.repeatability
-        self.seed = r.root_seed
-        self.as_of = np.datetime64(r.as_of_date.isoformat(), "D")
-        self.dataset_id = self.bp.data_spec.dataset_id
-        self.tenant_id = self.bp.tenant.id
-        self.in_scope = self._entities_in_scope()
+        self.seed = self.spec.root_seed
+        self.as_of = np.datetime64(self.spec.as_of_date.isoformat(), "D")
+        self.dataset_id = self.spec.dataset_id
+        self.tenant_id = self.spec.tenant_id
 
-    # ------------------------------------------------------------ scope
-    def _entities_in_scope(self) -> set[str]:
-        out: set[str] = set()
-        for d in self.bp.scope.domains:
-            ents = catalog.ENTITIES[d.code] if d.role == "primary" else (d.entities or [])
-            out |= set(ents)
-        return out
+    # ------------------------------------------------------------ scope: entities named in the payloads so far
+    @property
+    def in_scope(self) -> set[str]:
+        return self.spec.entities
 
     def wants(self, entity: str) -> bool:
         return entity in self.in_scope
@@ -62,10 +57,10 @@ class GenContext:
         return row_ids(self.dataset_id, entity, self.seed, keys)
 
     def scenarios(self, anchor: str, rr: RowRandom) -> np.ndarray:
-        """Assign scenario ids to anchor rows using the blueprint's scenario mix."""
+        """Assign scenario ids to anchor rows using the run's scenario mix (from the job payloads)."""
         mix = [
             (s.scenario_id, s.share_pct)
-            for s in self.bp.data_spec.scenario_mix
+            for s in self.spec.scenario_mix
             if s.scenario_id in catalog.SCENARIOS and catalog.SCENARIOS[s.scenario_id]["anchor"] == anchor
         ]
         if not mix:
@@ -86,9 +81,11 @@ class GenContext:
                 "scenario_id": pa.array(list(scen), pa.string()),
             }
         )
-        typed = not any(pa.types.is_null(f.type) for f in table.schema)
-        if n or (typed and not self.stores.tables.exists(entity)):
-            # an empty shard only creates the table when every column type is known
+        if n == 0:  # columns built from empty lists have no type: ids and text default to string
+            table = pa.table({f.name: (pa.array([], pa.string()) if pa.types.is_null(f.type) else table[f.name])
+                              for f in table.schema})
+        if n or not self.stores.tables.exists(entity):
+            # every generated entity exists afterwards, even with zero rows
             self.stores.tables.upsert(entity, table, catalog.PRIMARY_KEY[entity])
         self.counts[entity] = self.counts.get(entity, 0) + n
         self.checksums[entity] = (self.checksums.get(entity, 0) + checksum(table)) % (1 << 64)

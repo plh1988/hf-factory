@@ -124,10 +124,12 @@ def privacy_scan(ctx: GenContext, options: dict | None = None) -> dict:
 def run(ctx: GenContext, rule_sets: list[str] | None = None, privacy_options: dict | None = None) -> dict:
     report = run_rules(ctx, rule_sets)
     privacy = privacy_scan(ctx, privacy_options)
-    r = ctx.bp.repeatability
+    r = ctx.spec
     manifest = Manifest(
-        blueprint_hash=ctx.bp.blueprint_hash,
-        data_spec_hash=ctx.bp.data_spec_hash,
+        tenant_id=r.tenant_id,
+        dataset_id=r.dataset_id,
+        data_spec_hash=r.data_spec_hash(),
+        payload_hashes=dict(sorted(r.payload_hashes.items())),
         root_seed=r.root_seed,
         as_of_date=r.as_of_date,
         catalog_version=r.catalog_version,
