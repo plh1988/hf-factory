@@ -1,0 +1,98 @@
+{
+  "job": "generate_claims_auth",
+  "stage": "s5",
+  "root_seed": 20261012,
+  "stage_seed": 3000415865,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 8,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-ma-demo-01",
+    "gcs": "gs://ma-demo-01-docs",
+    "vector_index": "kb-ma-demo-01"
+  },
+  "consumes_refs": "s3 providers, s4 members and enrollments",
+  "entities": [
+    "claim_header",
+    "claim_line",
+    "pharmacy_claim_detail",
+    "claim_denial",
+    "claim_pend",
+    "claim_adjustment",
+    "claim_payment",
+    "appeal_record",
+    "reprocessing_history",
+    "auth_request",
+    "auth_line",
+    "auth_determination",
+    "clinical_review_queue",
+    "documentation_requirement"
+  ],
+  "volumes": {
+    "claims": 50000,
+    "authorizations": 2500
+  },
+  "denial_rate": 0.1,
+  "scenario_mix": [
+    {
+      "scenario_id": "PCS-01",
+      "share_pct": 31.7
+    },
+    {
+      "scenario_id": "PCS-02",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PCS-03",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PCS-04",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PAS-01",
+      "share_pct": 31.7
+    },
+    {
+      "scenario_id": "PAS-02",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PAS-03",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PAS-04",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PEV-01",
+      "share_pct": 31.7
+    },
+    {
+      "scenario_id": "PEV-02",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PEV-03",
+      "share_pct": 0.6
+    },
+    {
+      "scenario_id": "PEV-04",
+      "share_pct": 0.6
+    }
+  ],
+  "rules": [
+    "R-03",
+    "R-07",
+    "F-01",
+    "F-02",
+    "F-05",
+    "T-02",
+    "T-03",
+    "T-04"
+  ]
+}

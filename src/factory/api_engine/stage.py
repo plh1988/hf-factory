@@ -153,10 +153,13 @@ def contract_tests(app: FastAPI, bp: Blueprint, stores: Stores) -> list[dict[str
     return out
 
 
-def run_api_engine(bp: Blueprint, stores: Stores, manifest_uri: str | None) -> ApiEngineRun:
+def run_api_engine(bp: Blueprint, stores: Stores, manifest_uri: str | None, job: dict[str, Any] | None = None) -> ApiEngineRun:
+    """job = the s8 payload (rate_limit, fault_injection override the blueprint); None = blueprint defaults."""
+    job = job or {}
     t0 = time.perf_counter()
     stores.events.publish("scenario-events", {"stage": "s8", "job": "api_generate_and_deploy", "state": "STARTED"})
-    app = create_app(bp, stores)
+    app = create_app(bp, stores, rate_limit_rpm=(job.get("rate_limit") or {}).get("per_client_rpm"),
+                     fault_settings=job.get("fault_injection"))
     spec = app.openapi()
     openapi_uri = stores.blobs.put("api/openapi.json", json.dumps(spec, indent=2).encode(), "application/json")
     tools = tool_manifest(spec, bp.api_spec.base_path)
@@ -169,6 +172,9 @@ def run_api_engine(bp: Blueprint, stores: Stores, manifest_uri: str | None) -> A
         gateway_url=deployment.gateway_url, revision=deployment.revision, target=deployment.target,
         openapi_uri=openapi_uri, tool_manifest_uri=tools_uri, endpoint_count=len(tools), tools_published=len(tools),
         contract_tests={"total": len(tests), "passed": passed}, credentials_secret_ref=app.state.clients.secret_ref,
+        rate_limit={"per_client_rpm": app.state.limiter.per_minute},
+        fault_injection={**bp.api_spec.fault_injection.model_dump(), **(job.get("fault_injection") or {})},
+        agent_tools=True,
         consumes={"tables": stores.tables.uri, "manifest": manifest_uri},
         error=None if passed == len(tests) else "contract tests failed",
     )

@@ -27,17 +27,48 @@ def luhn_ok(npi: str) -> bool:
     return total % 10 == 0
 
 
-def run_rules(ctx: GenContext) -> dict:
-    tables = ctx.stores.tables
-    present = {e for e in ctx.counts if tables.exists(e)}
-    rule_list = R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)]
-    results = []
-    for rule in rule_list:
-        if not set(rule.needs) <= present:
-            results.append({"rule": rule.id, "status": "SKIPPED", "violations": None, "description": rule.description})
-            continue
-        n = int(tables.query(rule.sql).column(0)[0].as_py() or 0)
-        results.append({"rule": rule.id, "status": "PASS" if n == 0 else "FAIL", "violations": n, "description": rule.description})
+RULE_BASE = re.compile(r"^[A-Z]-\d+")
+
+
+def all_rules(ctx: GenContext, present: set[str]) -> list[R.Rule]:
+    return R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)]
+
+
+def _evaluate(ctx: GenContext, rule: R.Rule, present: set[str]) -> dict:
+    if not set(rule.needs) <= present:
+        return {"rule": rule.id, "status": "SKIPPED", "violations": None, "description": rule.description,
+                "waiting_for": sorted(set(rule.needs) - present)}
+    n = int(ctx.stores.tables.query(rule.sql).column(0)[0].as_py() or 0)
+    return {"rule": rule.id, "status": "PASS" if n == 0 else "FAIL", "violations": n, "description": rule.description}
+
+
+def check_rules(ctx: GenContext, requested: list[str]) -> tuple[dict[str, str], list[dict]]:
+    """Stage-level check of the rule ids a job payload names (e.g. ["R-04", "F-04", "P-02"]).
+
+    A rule id covers all its sub-rules (R-04 -> R-04a, R-04b). Sub-rules whose tables do not exist yet
+    are deferred to s7. Summary per id: PASS, FAIL, PASS_PARTIAL (rest deferred), DEFERRED_TO_S7, NOT_CHECKED."""
+    present = {e for e in ctx.counts if ctx.stores.tables.exists(e)}
+    rules = [r for r in all_rules(ctx, present) if not r.id.startswith("R-01:") and not r.id.startswith("P-01:")]
+    summary, details = {}, []
+    for rid in requested:
+        subs = [_evaluate(ctx, r, present) for r in rules if RULE_BASE.match(r.id).group(0) == rid]
+        details += subs
+        ran = [s for s in subs if s["status"] != "SKIPPED"]
+        if not subs:
+            summary[rid] = "NOT_CHECKED"
+        elif any(s["status"] == "FAIL" for s in ran):
+            summary[rid] = "FAIL"
+        elif not ran:
+            summary[rid] = "DEFERRED_TO_S7"
+        else:
+            summary[rid] = "PASS" if len(ran) == len(subs) else "PASS_PARTIAL"
+    return summary, details
+
+
+def run_rules(ctx: GenContext, families: list[str] | None = None) -> dict:
+    present = {e for e in ctx.counts if ctx.stores.tables.exists(e)}
+    rule_list = [r for r in all_rules(ctx, present) if families is None or r.id[0] in families]
+    results = [_evaluate(ctx, rule, present) for rule in rule_list]
     checked = [r for r in results if r["status"] != "SKIPPED"]
     fk = [r for r in checked if r["rule"].startswith("R-01")]
     return {
@@ -51,7 +82,8 @@ def run_rules(ctx: GenContext) -> dict:
     }
 
 
-def privacy_scan(ctx: GenContext) -> dict:
+def privacy_scan(ctx: GenContext, options: dict | None = None) -> dict:
+    options = options or {"near_duplicates": True, "rare_combinations": True, "reserved_formats": True}
     tables = ctx.stores.tables
     findings: list[str] = []
     if tables.exists("provider"):
@@ -80,12 +112,18 @@ def privacy_scan(ctx: GenContext) -> dict:
                    "duplicate generated texts (informational)"],
         "findings": sorted(set(findings)),
         "duplicate_texts": dupes,
+        "requested": {
+            "reserved_formats": "CHECKED" if options.get("reserved_formats") else "NOT_REQUESTED",
+            "near_duplicates": f"CHECKED ({dupes} exact duplicate texts)" if options.get("near_duplicates") else "NOT_REQUESTED",
+            "rare_combinations": "NOT_APPLICABLE (no real seed records are used; rows are drawn from pinned distributions)"
+            if options.get("rare_combinations") else "NOT_REQUESTED",
+        },
     }
 
 
-def run(ctx: GenContext) -> dict:
-    report = run_rules(ctx)
-    privacy = privacy_scan(ctx)
+def run(ctx: GenContext, rule_sets: list[str] | None = None, privacy_options: dict | None = None) -> dict:
+    report = run_rules(ctx, rule_sets)
+    privacy = privacy_scan(ctx, privacy_options)
     r = ctx.bp.repeatability
     manifest = Manifest(
         blueprint_hash=ctx.bp.blueprint_hash,

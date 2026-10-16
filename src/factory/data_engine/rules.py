@@ -10,7 +10,14 @@ from dataclasses import dataclass, field
 
 from factory.data_engine import catalog
 
-PA_LIST = ", ".join(f"'{c}'" for c in catalog.PA_CODES)
+def _sql_list(values) -> str:
+    return ", ".join(f"'{v}'" for v in values)
+
+
+PA_LIST = _sql_list(catalog.PA_CODES)
+CPT_LIST = _sql_list(c[0] for c in catalog.CPT)
+NDC_LIST = _sql_list(d[0] for d in catalog.NDC)
+TAXONOMY_LIST = _sql_list(code for opts in catalog.TAXONOMY.values() for code, _ in opts)
 
 
 @dataclass
@@ -94,7 +101,11 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
               AND EXISTS (SELECT 1 FROM claim_line l WHERE l.claim_id = h.claim_id AND l.cpt_hcpcs IN ({PA_LIST}))
               AND NOT EXISTS (SELECT 1 FROM auth_request a WHERE a.auth_id = h.auth_id AND a.status IN ('APPROVED', 'PARTIAL'))""",
              ["claim_header", "claim_line", "auth_request"]),
-        Rule("R-04", "In-network claims bill from a provider participating on the plan at DOS", """
+        Rule("R-04a", "Participation windows are valid: effective <= term; TERMED rows have a term date", """
+            SELECT count(*) FROM network_participation WHERE (term_dt IS NOT NULL AND term_dt < effective_dt)
+              OR (status = 'TERMED' AND term_dt IS NULL)""",
+             ["network_participation"]),
+        Rule("R-04b", "In-network claims bill from a provider participating on the plan at DOS", """
             SELECT count(*) FROM claim_header h WHERE h.network_status = 'IN' AND NOT EXISTS (
               SELECT 1 FROM network_participation n WHERE n.npi = h.billing_npi AND n.plan_id = h.plan_id
                 AND n.status = 'PARTICIPATING' AND n.effective_dt <= h.service_from_dt
@@ -122,6 +133,10 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_header h WHERE
               (h.claim_type = 'PHARMACY') <> ((SELECT count(*) FROM pharmacy_claim_detail p WHERE p.claim_id = h.claim_id) = 1)""",
              ["claim_header", "pharmacy_claim_detail"]),
+        Rule("R-09", "Care gaps close only through a matching paid claim", """
+            SELECT count(*) FROM care_gap g WHERE g.status = 'CLOSED' AND NOT EXISTS (
+              SELECT 1 FROM claim_header h WHERE h.claim_id = g.closed_by_claim_id AND h.status = 'PAID')""",
+             ["care_gap", "claim_header"]),
         Rule("R-10", "Inpatient facility discharges have a transition-of-care record", """
             SELECT count(*) FROM claim_header h WHERE h.bill_type = '0111' AND NOT EXISTS (
               SELECT 1 FROM transition_of_care t WHERE t.member_id = h.member_id
@@ -188,6 +203,15 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
               ON l.claim_id = h.claim_id
             WHERE h.total_billed <> l.b OR h.total_allowed <> l.a OR h.total_paid <> l.p""",
              ["claim_header", "claim_line"]),
+        Rule("F-04a", "Provider taxonomy codes come from the pinned taxonomy table", f"""
+            SELECT count(*) FROM provider WHERE taxonomy_code NOT IN ({TAXONOMY_LIST})""",
+             ["provider"]),
+        Rule("F-04b", "Procedure codes come from the pinned CPT/HCPCS table", f"""
+            SELECT count(*) FROM claim_line WHERE cpt_hcpcs IS NOT NULL AND cpt_hcpcs NOT IN ({CPT_LIST})""",
+             ["claim_line"]),
+        Rule("F-04c", "Drug codes come from the pinned NDC table", f"""
+            SELECT count(*) FROM pharmacy_claim_detail WHERE ndc NOT IN ({NDC_LIST})""",
+             ["pharmacy_claim_detail"]),
         Rule("F-02a", "Paid lines: paid = allowed - (deductible + copay + coinsurance)", """
             SELECT count(*) FROM claim_line WHERE line_status = 'PAID'
               AND paid <> allowed - deductible - copay - coinsurance""",
@@ -230,10 +254,15 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM auth_determination WHERE outcome = 'DENIED' AND denial_category = 'MED_NECESSITY'
               AND decided_by_role NOT IN ('MEDICAL_DIRECTOR', 'SAME_SPECIALTY_PEER')""",
              ["auth_determination"]),
-        Rule("P-02a", "Member and location phones use the reserved 555-01xx range", """
-            SELECT (SELECT count(*) FROM member_demographics WHERE phone NOT LIKE '%555-01__')
-                 + (SELECT count(*) FROM practice_location WHERE phone NOT LIKE '%555-01__')""",
-             ["member_demographics", "practice_location"]),
+        Rule("P-02a", "Member phones use the reserved 555-01xx range", """
+            SELECT count(*) FROM member_demographics WHERE phone NOT LIKE '%555-01__'""",
+             ["member_demographics"]),
+        Rule("P-02c", "Practice location phones use the reserved 555-01xx range", """
+            SELECT count(*) FROM practice_location WHERE phone NOT LIKE '%555-01__'""",
+             ["practice_location"]),
+        Rule("P-02d", "Provider TINs use the synthetic 9xxxxxxxx range", """
+            SELECT count(*) FROM provider WHERE tin NOT LIKE '9________'""",
+             ["provider"]),
         Rule("P-02b", "Member emails use the reserved example.test domain", """
             SELECT count(*) FROM member_demographics WHERE email NOT LIKE '%@example.test'""",
              ["member_demographics"]),

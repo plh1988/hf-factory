@@ -1,0 +1,48 @@
+{
+  "job": "generate_members",
+  "stage": "s4",
+  "root_seed": 20261012,
+  "stage_seed": 2983638246,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 8,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-ma-demo-01",
+    "gcs": "gs://ma-demo-01-docs",
+    "vector_index": "kb-ma-demo-01"
+  },
+  "consumes_refs": "s3 plan and provider ids",
+  "entities": [
+    "member_demographics",
+    "family_relationship",
+    "plan_enrollment",
+    "member_accumulator",
+    "pcp_assignment",
+    "risk_score",
+    "care_gap",
+    "sdoh_indicator"
+  ],
+  "volumes": {
+    "members": 50000
+  },
+  "distributions": {
+    "lob_mix": {
+      "MEDICARE_ADV": 1
+    },
+    "age_by_lob": "D-02",
+    "denial_rate": 0.1
+  },
+  "personas": [
+    "BILLING",
+    "REFERRAL",
+    "OFFICE"
+  ],
+  "rules": [
+    "R-02",
+    "R-05",
+    "R-06",
+    "T-01"
+  ]
+}

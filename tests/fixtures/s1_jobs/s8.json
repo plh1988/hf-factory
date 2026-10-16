@@ -1,0 +1,65 @@
+{
+  "job": "api_generate_and_deploy",
+  "stage": "s8",
+  "style": "REST, OpenAPI 3.1",
+  "base_path": "/v1",
+  "use_cases": [
+    "PCS",
+    "PAS",
+    "PEV"
+  ],
+  "consumes": {
+    "from": [
+      "s2",
+      "s7"
+    ],
+    "alloydb": "alloy-ma-demo-01",
+    "bigquery": "ma_demo_01_claims",
+    "vector_index": "kb-ma-demo-01",
+    "manifest": "gs://ma-demo-01-docs/manifest/20261012.json"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/v1/claims/{claim_id}/status",
+      "use_case": "PCS"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/authorizations/{auth_id}/status",
+      "use_case": "PAS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/authorizations/{auth_id}/documents",
+      "use_case": "PAS"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/eligibility/verify",
+      "use_case": "PEV"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/identity/verify",
+      "use_case": "COMMON"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/knowledge/search",
+      "use_case": "COMMON"
+    }
+  ],
+  "auth": {
+    "type": "OAuth2 client credentials",
+    "secret_ref": "projects/hf-ma-demo-01/secrets/api-client-secret"
+  },
+  "rate_limit": {
+    "per_client_rpm": 600
+  },
+  "fault_injection": {
+    "error_rate_pct": 1,
+    "latency_p95_ms": 450
+  },
+  "agent_tools": true
+}

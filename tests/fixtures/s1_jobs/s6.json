@@ -1,0 +1,43 @@
+{
+  "job": "generate_care_knowledge",
+  "stage": "s6",
+  "root_seed": 20261012,
+  "stage_seed": 2950083008,
+  "as_of_date": "2026-10-12",
+  "catalog_version": "2.4.0",
+  "id_strategy": "UUIDv5(dataset_id, entity, seed, row_index)",
+  "shards": 8,
+  "consumes": {
+    "from": "s2",
+    "alloydb": "alloy-ma-demo-01",
+    "gcs": "gs://ma-demo-01-docs",
+    "vector_index": "kb-ma-demo-01"
+  },
+  "consumes_refs": "s3 plans and providers, s4 members",
+  "entities": [
+    "care_case",
+    "transition_of_care",
+    "knowledge_asset",
+    "asset_chunk",
+    "faq_entry",
+    "agent_sop",
+    "asset_link",
+    "qa_golden"
+  ],
+  "volumes": {
+    "knowledge_assets": 49,
+    "faq_entries": 90
+  },
+  "llm": {
+    "provider": "Vertex AI",
+    "model": "pinned at blueprint time",
+    "temperature": 0,
+    "text_cache": "content-addressed, Cloud Storage"
+  },
+  "rules": [
+    "R-09",
+    "R-10",
+    "R-11",
+    "T-08"
+  ]
+}

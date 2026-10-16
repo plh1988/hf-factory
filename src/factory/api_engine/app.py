@@ -19,7 +19,9 @@ class ApiEngineError(RuntimeError):
     pass
 
 
-def create_app(bp: Blueprint, stores: Stores, fault_injection: bool = True) -> FastAPI:
+def create_app(bp: Blueprint, stores: Stores, fault_injection: bool = True, rate_limit_rpm: int | None = None,
+               fault_settings: dict[str, Any] | None = None) -> FastAPI:
+    """rate_limit_rpm / fault_settings come from the s8 job payload; default to the blueprint's values."""
     missing = [uc for uc in bp.scope.use_cases if uc not in ENDPOINTS]
     if missing:
         raise ApiEngineError(f"use cases without v1 endpoints: {missing}")
@@ -32,10 +34,10 @@ def create_app(bp: Blueprint, stores: Stores, fault_injection: bool = True) -> F
     app.state.stores = stores
     app.state.repo = Repository(stores)
     app.state.clients = ClientRegistry(bp, stores)
-    app.state.limiter = RateLimiter(per_minute=int(bp.infra_spec.sizing.get("concurrent_sessions", 30)) * 20)
+    app.state.limiter = RateLimiter(per_minute=rate_limit_rpm or int(bp.infra_spec.sizing.get("concurrent_sessions", 30)) * 20)
     app.state.lookups = {}
-    fi = bp.api_spec.fault_injection
-    app.add_middleware(FaultInjection, error_rate_pct=fi.error_rate_pct, latency_p95_ms=fi.latency_p95_ms,
+    fi = {**bp.api_spec.fault_injection.model_dump(), **(fault_settings or {})}
+    app.add_middleware(FaultInjection, error_rate_pct=fi["error_rate_pct"], latency_p95_ms=fi["latency_p95_ms"],
                        seed=bp.repeatability.root_seed, enabled=fault_injection)
 
     for uc in bp.scope.use_cases:

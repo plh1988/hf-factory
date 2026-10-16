@@ -28,6 +28,46 @@ Other commands:
 | `python -m factory up --blueprint blueprints/s1_ma_demo.json --shards 8` | Full S1 (50,000 members, ~815k rows, ~10 s) |
 | `python -m pytest` | Test suite |
 
+## REST control plane: run each stage with the spec's job payloads
+
+```bash
+.venv/Scripts/python -m factory serve
+```
+
+Every blueprint in `blueprints/` is registered as a stub Blueprint Engine output. Then call, in order:
+
+| Step | Endpoint | Body |
+|---|---|---|
+| 1 | `POST /factory/data-engine/s3` | spec S1 s3 payload (`generate_reference_data`) |
+| 2 | `POST /factory/data-engine/s4` | s4 payload (`generate_members`) |
+| 3 | `POST /factory/data-engine/s5` | s5 payload (`generate_claims_auth`) |
+| 4 | `POST /factory/data-engine/s6` | s6 payload (`generate_care_knowledge`) |
+| 5 | `POST /factory/data-engine/s7` | s7 payload (`validate_and_scan`) |
+| 6 | `POST /factory/api-engine/s8` | s8 payload (`api_generate_and_deploy`) |
+
+The payloads are in `tests/fixtures/s1_jobs/` (extracted from the spec's own S1 code, with the spec's expected
+outputs beside them). Import `postman/hf-factory-s1.postman_collection.json` for a ready-made Postman sequence.
+Control-plane docs: http://127.0.0.1:8080/factory/docs. After s8 the tenant API is live at http://127.0.0.1:8080/docs;
+`GET /factory/runs/ma-demo-01/credentials` returns local test credentials.
+
+How payloads are handled:
+
+- **Tenant:** read from `consumes.alloydb` (`alloy-ma-demo-01` -> `ma-demo-01`), or `tenant_id`, or `?tenant=`.
+  s7 has none of these, so it applies to the run in progress.
+- **Must match the blueprint (409 with a diff otherwise):** `root_seed`, `stage_seed` (FNV-1a of `seed:stage`, as in the
+  spec), `as_of_date`, `catalog_version`, `id_strategy`, volumes the blueprint defines, distributions, `denial_rate`,
+  `scenario_mix`, and for s8 `use_cases`, `base_path` and the endpoint list.
+- **Accepted and reported in `notes`:** targets the blueprint does not define (s6 `knowledge_assets`, s7 `total_rows`),
+  `access_standards` (out of S1 scope), entities generated in a different stage in v1 (`member_accumulator` in s5).
+- **Order:** s4 needs s3, s5 needs s4, s6 needs s5 (v1), s7 needs s3-s6, s8 needs a green s7. Wrong order = 409.
+- **Re-runs** are idempotent (same checksums) and reset s7/s8, which must be run again.
+- **Per-stage `rule_checks`:** each rule the payload names, as `PASS`, `FAIL`, `PASS_PARTIAL` (sub-rules needing later
+  tables are checked in s7) or `DEFERRED_TO_S7`.
+- s8 uses the payload's `rate_limit` and `fault_injection`.
+
+`GET /factory/runs/{tenant}` shows stage status; `/manifest` and `/rule-report` return s7 outputs;
+`DELETE /factory/runs/{tenant}` starts over. The control plane has no auth in v1; it binds to 127.0.0.1.
+
 ## One variable switches local and cloud
 
 `FACTORY_PROFILE` in `.env` is the only setting that differs between environments:

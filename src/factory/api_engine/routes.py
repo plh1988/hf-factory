@@ -378,3 +378,9 @@ def search_knowledge(request: Request, q: str = Query(..., min_length=2, max_len
 
 # use case -> router. v1 implements the S1 use cases; others fail fast in create_app.
 ENDPOINTS: dict[str, APIRouter] = {"PCS": pcs, "PAS": pas, "PEV": pev}
+
+# (method, path under base_path) per use case; COMMON is mounted for every tenant.
+ENDPOINT_CATALOG: dict[str, list[tuple[str, str]]] = {
+    uc: sorted((m, r.path) for r in router.routes for m in r.methods)
+    for uc, router in {**ENDPOINTS, "COMMON": common}.items()
+}

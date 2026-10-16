@@ -1,0 +1,59 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 2,
+  "entities": [
+    {
+      "entity": "care_case",
+      "rows": 2000,
+      "checksum": "5be19b4e"
+    },
+    {
+      "entity": "transition_of_care",
+      "rows": 1500,
+      "checksum": "bcf75257"
+    },
+    {
+      "entity": "knowledge_asset",
+      "rows": 49,
+      "checksum": "55e17e74"
+    },
+    {
+      "entity": "asset_chunk",
+      "rows": 2940,
+      "checksum": "c572dfe1"
+    },
+    {
+      "entity": "faq_entry",
+      "rows": 90,
+      "checksum": "fc32315a"
+    },
+    {
+      "entity": "agent_sop",
+      "rows": 3,
+      "checksum": "0c9a5f29"
+    },
+    {
+      "entity": "asset_link",
+      "rows": 392,
+      "checksum": "845b6501"
+    },
+    {
+      "entity": "qa_golden",
+      "rows": 180,
+      "checksum": "f02005f1"
+    }
+  ],
+  "llm_text": {
+    "generated": 2940,
+    "served_from_cache": 0,
+    "cache_key": "sha256(model, prompt_version, inputs, seed)"
+  },
+  "vector_index": {
+    "loaded_chunks": 2940,
+    "index": "kb-ma-demo-01"
+  },
+  "rule_checks": {
+    "R-11": "PASS",
+    "T-08": "PASS"
+  }
+}

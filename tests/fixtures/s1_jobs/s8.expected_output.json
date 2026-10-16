@@ -1,0 +1,28 @@
+{
+  "status": "DEPLOYED",
+  "duration_min": 4,
+  "gateway_url": "https://api-ma-demo-01.hfactory.example/v1",
+  "revision": "api-backend-00001",
+  "openapi_uri": "gs://ma-demo-01-docs/api/openapi.yaml",
+  "endpoint_count": 6,
+  "tool_manifest_uri": "gs://ma-demo-01-docs/api/tools.json",
+  "tools_published": 6,
+  "container_image": "api-backend@sha256:… (pinned)",
+  "contract_tests": {
+    "total": 24,
+    "passed": 24
+  },
+  "sample_call": {
+    "request": "GET /v1/claims/CLM-000123/status?npi=1003000126&tin=912345678",
+    "response": {
+      "claim_id": "CLM-000123",
+      "status": "PENDED",
+      "pend_reason": "RECORDS_REQUEST",
+      "info_needed_from": "PROVIDER",
+      "expected_resolution_dt": "2026-10-21",
+      "last_updated": "2026-10-11T09:14:02Z",
+      "is_synthetic": true,
+      "scenario_id": "PCS-02"
+    }
+  }
+}

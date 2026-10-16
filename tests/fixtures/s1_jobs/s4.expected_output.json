@@ -1,0 +1,53 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 2,
+  "entities": [
+    {
+      "entity": "member_demographics",
+      "rows": 50000,
+      "checksum": "72e02fda"
+    },
+    {
+      "entity": "family_relationship",
+      "rows": 55000,
+      "checksum": "e49715b1"
+    },
+    {
+      "entity": "plan_enrollment",
+      "rows": 57500,
+      "checksum": "f290c833"
+    },
+    {
+      "entity": "member_accumulator",
+      "rows": 100000,
+      "checksum": "cc565390"
+    },
+    {
+      "entity": "pcp_assignment",
+      "rows": 60000,
+      "checksum": "5eb20c69"
+    },
+    {
+      "entity": "risk_score",
+      "rows": 100000,
+      "checksum": "d0ddd5ef"
+    },
+    {
+      "entity": "care_gap",
+      "rows": 45000,
+      "checksum": "d7ea6a15"
+    },
+    {
+      "entity": "sdoh_indicator",
+      "rows": 30000,
+      "checksum": "08d4f499"
+    }
+  ],
+  "rule_checks": {
+    "R-02": "PASS",
+    "R-05": "PASS",
+    "R-06": "PASS",
+    "T-01": "PASS"
+  },
+  "loaded_to": "AlloyDB"
+}

@@ -1,0 +1,85 @@
+{
+  "status": "COMPLETED",
+  "duration_min": 3,
+  "entities": [
+    {
+      "entity": "claim_header",
+      "rows": 50000,
+      "checksum": "f809fc6d"
+    },
+    {
+      "entity": "claim_line",
+      "rows": 115000,
+      "checksum": "ddda0b2a"
+    },
+    {
+      "entity": "pharmacy_claim_detail",
+      "rows": 20000,
+      "checksum": "3f2ca70c"
+    },
+    {
+      "entity": "claim_denial",
+      "rows": 5000,
+      "checksum": "e1ef296b"
+    },
+    {
+      "entity": "claim_pend",
+      "rows": 2500,
+      "checksum": "ba4efae5"
+    },
+    {
+      "entity": "claim_adjustment",
+      "rows": 105000,
+      "checksum": "cadb7d3e"
+    },
+    {
+      "entity": "claim_payment",
+      "rows": 42500,
+      "checksum": "d4043ccc"
+    },
+    {
+      "entity": "appeal_record",
+      "rows": 600,
+      "checksum": "06b833cf"
+    },
+    {
+      "entity": "reprocessing_history",
+      "rows": 2000,
+      "checksum": "6d8f60e1"
+    },
+    {
+      "entity": "auth_request",
+      "rows": 2500,
+      "checksum": "b2f0f379"
+    },
+    {
+      "entity": "auth_line",
+      "rows": 3500,
+      "checksum": "6bbcab15"
+    },
+    {
+      "entity": "auth_determination",
+      "rows": 2750,
+      "checksum": "2b20d140"
+    },
+    {
+      "entity": "clinical_review_queue",
+      "rows": 500,
+      "checksum": "0c194725"
+    },
+    {
+      "entity": "documentation_requirement",
+      "rows": 875,
+      "checksum": "cf30727e"
+    }
+  ],
+  "rule_checks": {
+    "R-03": "PASS",
+    "R-07": "PASS",
+    "F-01": "PASS",
+    "F-02": "PASS",
+    "F-05": "PASS",
+    "T-03": "PASS"
+  },
+  "loaded_to": "AlloyDB (serving) + BigQuery (analytics)"
+}

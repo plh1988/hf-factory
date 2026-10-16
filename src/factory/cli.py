@@ -4,6 +4,7 @@
   python -m factory generate --blueprint B [--export DIR]   run data engine s3-s7 (+ optional Parquet export)
   python -m factory verify --blueprint B            repro-check: regenerate with different shard counts, compare checksums
   python -m factory up --blueprint B                data engine s3-s7, API engine s8, delivery manifest, then serve the API
+  python -m factory serve                           REST control plane: trigger s3..s7 and s8 one call at a time
 
 The backend is chosen by FACTORY_PROFILE (memory | memory-offline | gcp), nothing else.
 """
@@ -148,6 +149,25 @@ def cmd_up(args) -> int:
     return 0
 
 
+def cmd_serve(args) -> int:
+    import uvicorn
+
+    from factory.control.registry import Registry
+    from factory.control.server import create_control_app
+
+    s2 = S2Output.load(args.s2) if args.s2 else None
+    profile = load_profile(s2=s2)
+    registry = Registry(profile, s2)
+    loaded = registry.load_dir(Path(args.blueprints))
+    host, port = profile.deployer.get("host", "127.0.0.1"), int(profile.deployer.get("port", 8080))
+    print(f"profile={profile.name}  blueprints: {', '.join(loaded) or 'none'}")
+    print(f"control plane: http://{host}:{port}/factory/docs")
+    print(f"  POST /factory/data-engine/s3 .. s7, then POST /factory/api-engine/s8")
+    print(f"  tenant API (after s8): http://{host}:{port}/docs")
+    uvicorn.run(create_control_app(registry), host=host, port=port, log_level="info")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="factory", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--s2", help="s2 output JSON (data store locations); needed for the gcp profile")
@@ -165,10 +185,12 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--blueprint", default=DEFAULT_BLUEPRINT)
     u.add_argument("--shards", type=int, default=4)
     u.add_argument("--no-serve", action="store_true", help="stop after s8 instead of serving the API")
+    sv = sub.add_parser("serve")
+    sv.add_argument("--blueprints", default="blueprints", help="folder of stub blueprint JSON files to register")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(asctime)s %(name)s %(message)s")
     _ = Settings()  # validates FACTORY_PROFILE early
-    return {"doctor": cmd_doctor, "generate": cmd_generate, "verify": cmd_verify, "up": cmd_up}[args.cmd](args)
+    return {"doctor": cmd_doctor, "generate": cmd_generate, "verify": cmd_verify, "up": cmd_up, "serve": cmd_serve}[args.cmd](args)
 
 
 if __name__ == "__main__":
