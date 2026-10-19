@@ -49,6 +49,7 @@ USE_CASE_TABLES = {  # s8: data a use case's endpoints read
 
 
 class JobRejected(Exception):
+    """A payload the control plane refuses; becomes an HTTP error with a code (e.g. STAGE_ORDER) and details."""
     def __init__(self, status: int, code: str, message: str, details: Any = None) -> None:
         super().__init__(message)
         self.status, self.code, self.message, self.details = status, code, message, details
@@ -56,6 +57,9 @@ class JobRejected(Exception):
 
 @dataclass
 class Run:
+    """One tenant's run: its spec (seed, as-of date, ...), its own stores and generation context, the stage
+    results so far, and the API engine result after s8.
+    """
     spec: RunSpec
     stores: Stores
     ctx: GenContext
@@ -66,6 +70,7 @@ class Run:
     limits: dict[str, int] = field(default_factory=dict)
 
     def status(self) -> dict[str, Any]:
+        """Per-stage status (NOT_RUN until done), the next stage to call and whether the tenant API is live."""
         stages = {s: (self.completed[s].status if s in self.completed else "NOT_RUN") for s in STAGES}
         stages["s8"] = self.api.result.status if self.api else "NOT_RUN"
         return {"tenant": self.spec.tenant_id, "dataset_id": self.spec.dataset_id, "root_seed": self.spec.root_seed,
@@ -75,6 +80,9 @@ class Run:
 
 
 class Registry:
+    """All runs of this control-plane process, keyed by tenant. State lives in memory: a restart loses the runs
+    (the data itself persists in the gcp profile). `active` is the tenant used when a payload names none.
+    """
     def __init__(self, profile: Profile, s2: S2Output | None = None) -> None:
         self.profile, self.s2 = profile, s2
         self.runs: dict[str, Run] = {}
@@ -82,6 +90,10 @@ class Registry:
         self.lock = threading.Lock()  # one job at a time: stages share in-memory state
 
     def resolve_tenant(self, hint: str | None, explicit: str | None, stage: str) -> str:
+        """Tenant for a call: ?tenant= wins, then the payload (consumes.alloydb 'alloy-<tenant>'), then the active run.
+
+        s3 must name its tenant because it starts the run.
+        """
         tenant = explicit or hint
         if tenant:
             return tenant
@@ -93,6 +105,9 @@ class Registry:
         raise JobRejected(409, "STAGE_ORDER", "No run in progress. Start with POST /factory/data-engine/s3.")
 
     def run_for(self, tenant: str, stage: str, job: DataJob | None = None) -> Run:
+        """The tenant's run. s3 creates it (with namespaced stores) or, when it already exists, requires the same seed,
+        as-of date, catalog version and id strategy; later stages need an existing run.
+        """
         run = self.runs.get(tenant)
         if stage != "s3":
             if run is None:
@@ -118,6 +133,7 @@ class Registry:
         return run
 
     def reset(self, tenant: str) -> bool:
+        """Forget the tenant's run (DELETE /factory/runs/{tenant}). True if there was one."""
         if self.active == tenant:
             self.active = None
         return self.runs.pop(tenant, None) is not None
@@ -125,6 +141,7 @@ class Registry:
 
 # ================================================================ data engine payloads (s3-s7)
 def _check_names(stage: str, job: DataJob) -> None:
+    """Reject a payload sent to the wrong endpoint (its stage or job name does not match)."""
     job_name = STAGES[stage][0]
     if job.stage != stage:
         raise JobRejected(422, "WRONG_STAGE", f"This endpoint runs {stage}; payload says stage={job.stage!r}.")
@@ -133,6 +150,7 @@ def _check_names(stage: str, job: DataJob) -> None:
 
 
 def _check_run_settings(stage: str, job: DataJob, spec: RunSpec) -> None:
+    """Reject a later payload whose seed, as-of date, catalog version or id strategy differs from the run's."""
     diffs = []
     for k in ("root_seed", "as_of_date", "catalog_version", "id_strategy"):
         sent = getattr(job, k)
@@ -273,6 +291,7 @@ def validate_data_job(stage: str, job: DataJob, run: Run) -> list[str]:
 
 
 def _validate_s7(job: DataJob, run: Run) -> list[str]:
+    """s7 needs the stages it consumes to be completed, and rule_sets limited to the families R, T, F, C, P, A."""
     _check_names("s7", job)
     not_done = [s for s in (job.consumes.get("from") or []) if s not in run.completed]
     if not_done:
@@ -286,6 +305,9 @@ def _validate_s7(job: DataJob, run: Run) -> list[str]:
 
 # ================================================================ api engine payload (s8)
 def validate_api_job(job: ApiJob, run: Run) -> list[str]:
+    """Check the s8 payload: s7 completed with a green quality gate, known use cases, and the data each use case
+    reads is present. Returns notes for the response.
+    """
     notes, diffs = [], []
     if job.stage != "s8":
         raise JobRejected(422, "WRONG_STAGE", f"This endpoint runs s8; payload says stage={job.stage!r}.")

@@ -16,10 +16,12 @@ ENROLLMENT_LOOKBACK_MONTHS = 12
 
 
 def month_start(d: np.ndarray) -> np.ndarray:
+    """Truncate dates to the first day of their month (enrollments start on the 1st)."""
     return d.astype("datetime64[M]").astype("datetime64[D]")
 
 
 def load_plans(ctx: GenContext) -> dict:
+    """Plan ids grouped by line of business, read back from the TableStore (stages only share data through stores)."""
     t = ctx.stores.tables.query("SELECT plan_id, lob FROM plan ORDER BY plan_code")
     ids, lobs = t["plan_id"].to_pylist(), t["lob"].to_pylist()
     by_lob: dict[str, list[str]] = {}
@@ -43,6 +45,10 @@ def load_pcps(ctx: GenContext) -> dict[str, list[str]]:
 
 
 def pick(options_by_key: dict[str, list[str]], keys: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Vectorised choice: for each row, pick options_by_key[keys[i]] at position u[i] * len(options).
+
+    Rows whose key has no options get None (e.g. a plan with no eligible PCP).
+    """
     out = np.empty(len(keys), dtype=object)
     for k, opts in options_by_key.items():
         m = keys == k
@@ -52,9 +58,15 @@ def pick(options_by_key: dict[str, list[str]], keys: np.ndarray, u: np.ndarray) 
 
 
 def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict) -> None:
+    """Generate all member-anchored entities for member indexes [lo, hi).
+
+    Every value comes from the member's own random stream (seed, entity, member index), so the rows are identical
+    whichever shard or worker produces them. Member scenarios (PEV, MBN, MPS, MPC, MAS) are assigned first and then
+    force the facts their recipes need (retro termination, caregiver scope, transport need, PCP switch, ...).
+    """
     idx = np.arange(lo, hi)
     n = len(idx)
-    rr = ctx.rr("member_demographics", idx)
+    rr = ctx.rr("member_demographics", idx)  # one random stream per member; every draw below is keyed by its name
     dist = ctx.spec.distributions
     lob_mix = dist.get("lob_mix", {"COMMERCIAL": 1})
     lob = rr.choice("lob", list(lob_mix), list(lob_mix.values()))
@@ -123,6 +135,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     }, scenario=scen)
 
     # ---- enrollment (current span + 15% prior span)
+    # Keys: current span = member*4, prior span = member*4 + 1, so ids never collide and stay stable when members grow.
     # enrollments start at least 12 months back, so any claims window up to 12 months is covered
     hist_start = ctx.as_of - np.timedelta64(ENROLLMENT_LOOKBACK_MONTHS * 31, "D")
     eff = month_start(hist_start - rr.integers("enroll_back", 0, 900).astype("timedelta64[D]"))

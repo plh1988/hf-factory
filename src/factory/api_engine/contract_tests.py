@@ -22,6 +22,12 @@ BAD_TIN = "900000000"
 
 
 class Suite:
+    """Contract-test harness: an in-process TestClient against the tenant app, authenticated with the tenant's
+    client credentials, with fault injection switched off for every call.
+
+    Tests are registered first and run together. get/post/put return callables with the path and body bound
+    immediately, so a test never sees a variable that was reassigned later.
+    """
     def __init__(self, app: FastAPI, job: ApiJob, stores: Stores, as_of: str) -> None:
         self.client = TestClient(app)
         creds = json.loads(stores.blobs.get("secrets/api-client.json"))
@@ -31,9 +37,11 @@ class Suite:
         self.tests: list[tuple[str, str, Callable[[], Any], Callable[[Any], bool]]] = []
 
     def add(self, endpoint: str, name: str, call: Callable[[], Any], check: Callable[[Any], bool]) -> None:
+        """Register a test: `call` makes the request, `check` decides pass/fail from the response."""
         self.tests.append((endpoint, name, call, check))
 
     def one(self, sql: str, params: list[Any] | None = None) -> dict | None:
+        """First row of a sample query, or None when a table it reads was not generated (the test then uses a fallback)."""
         if not all(self.stores.tables.exists(t) for t in _tables(sql)):
             return None
         rows = self.stores.tables.query(sql + " LIMIT 1", params or []).to_pylist()
@@ -52,6 +60,7 @@ class Suite:
         return lambda: self.client.put(self.base + path, json=body, headers=self.auth if auth else NO_FAULTS)
 
     def run(self) -> list[dict[str, Any]]:
+        """Run every registered test; a failure records the API's error code (or the start of a non-JSON body)."""
         out = []
         for endpoint, name, call, check in self.tests:
             resp = call()
@@ -70,6 +79,7 @@ class Suite:
 
 
 def _tables(sql: str) -> list[str]:
+    """Table names after FROM / JOIN in a sample query (to check they exist first)."""
     words = sql.replace(",", " ").split()
     return [words[i + 1] for i, w in enumerate(words) if w.upper() in ("FROM", "JOIN") and i + 1 < len(words) and words[i + 1][0].isalpha()]
 
@@ -394,6 +404,7 @@ SUITES = {"PCS": ct_pcs, "PAS": ct_pas, "PEV": ct_pev, "MBN": ct_mbn, "MCI": ct_
 
 
 def contract_tests(app: FastAPI, job: ApiJob, stores: Stores, as_of: str) -> list[dict[str, Any]]:
+    """Register the suites of the payload's use cases plus the common ones (token, health, knowledge) and run them."""
     suite = Suite(app, job, stores, as_of)
     for uc in job.use_cases:
         SUITES[uc](suite)

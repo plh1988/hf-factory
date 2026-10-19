@@ -33,6 +33,7 @@ class DuckDBTableStore:
         return bool(rows)
 
     def upsert(self, entity: str, rows: pa.Table, key: str) -> None:
+        """Create the table from the first batch; later batches replace rows with the same key (delete + insert)."""
         with self._lock:
             cur = self._cur()
             cur.register("incoming", rows)
@@ -63,6 +64,7 @@ class DuckDBTableStore:
 
 
 class MemoryBlobStore:
+    """Blobs in a dict; put() returns a memory://blobs/<key> URI."""
     def __init__(self) -> None:
         self._data: dict[str, bytes] = {}
 
@@ -89,6 +91,7 @@ class NumpyVectorIndex:
         self._vecs = np.zeros((0, 0), dtype=np.float32)
 
     def upsert(self, ids: list[str], vectors: np.ndarray, metadata: list[dict[str, Any]]) -> None:
+        # vectors are stored unit-length, so search is a single dot product (cosine similarity)
         vectors = np.asarray(vectors, dtype=np.float32)
         norms = np.linalg.norm(vectors, axis=1, keepdims=True)
         vectors = vectors / np.where(norms == 0, 1, norms)
@@ -129,6 +132,7 @@ class NumpyVectorIndex:
 
 
 class LogEventBus:
+    """Events are kept in a list and logged (stand-in for Pub/Sub)."""
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
 
@@ -141,6 +145,7 @@ class LogEventBus:
 
 
 class MemoryTextCache:
+    """LLM text cache in a dict (stand-in for the GCS text cache)."""
     def __init__(self) -> None:
         self._data: dict[str, str] = {}
 

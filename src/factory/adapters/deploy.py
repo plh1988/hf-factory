@@ -22,17 +22,20 @@ log = logging.getLogger("factory.deploy")
 
 @dataclass
 class Deployment:
+    """Where the tenant API ended up: its base URL, the revision and a description of the target."""
     gateway_url: str
     revision: str
     target: str
 
 
 class LocalDeployer:
+    """Memory profiles: no provisioning; the control plane mounts the tenant API in-process after s8."""
     def __init__(self, cfg: AdapterConfig) -> None:
         self.host = cfg.get("host", "127.0.0.1")
         self.port = int(cfg.get("port", 8080))
 
     def deploy(self, tenant_id: str, base_path: str, openapi: dict | None = None) -> Deployment:
+        """Deploy the Cloud Run service, then the gateway unless the profile sets gateway: false."""
         # Nothing to provision: the control plane mounts the app in-process after s8 completes.
         return Deployment(gateway_url=f"http://{self.host}:{self.port}{base_path}", revision="local-00001", target="in-process uvicorn")
 
@@ -42,6 +45,7 @@ class LocalDeployer:
 
 # ---------------------------------------------------------------- OpenAPI 3.x -> 2.0 for API Gateway
 def _ref2(ref: str) -> str:
+    """Rewrite an OpenAPI 3 schema reference to its Swagger 2.0 location."""
     return ref.replace("#/components/schemas/", "#/definitions/")
 
 
@@ -103,6 +107,9 @@ class CloudRunDeployer:
         self.project, self.region = cfg.get("project"), cfg.get("region", "us-central1")
 
     def _deploy_service(self, tenant_id: str) -> tuple[str, str]:
+        """Create or update the Cloud Run service api-<tenant>, which runs `factory api --tenant <id>` from the same
+        image (scale to zero, up to max_instances). Returns its URL and the ready revision.
+        """
         from google.api_core.exceptions import NotFound
         from google.cloud import run_v2
 
@@ -128,6 +135,10 @@ class CloudRunDeployer:
         return service.uri, service.latest_ready_revision.split("/")[-1]
 
     def _deploy_gateway(self, tenant_id: str, backend_url: str, openapi: dict) -> str:
+        """Create or update API Gateway in front of the service: an API, an API config from the Swagger 2.0 version
+        of the tenant OpenAPI (config id = hash of the spec, so an unchanged spec reuses its config) and a gateway.
+        Returns the gateway's https host.
+        """
         from google.api_core.exceptions import NotFound
         from google.cloud import apigateway_v1
 

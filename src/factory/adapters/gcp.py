@@ -31,11 +31,13 @@ log = logging.getLogger("factory.gcp")
 
 
 def _ns(namespace: str | None) -> str:
+    """Tenant id made safe for schema, table and restrict names (lowercase, [a-z0-9_])."""
     return re.sub(r"[^a-z0-9_]", "_", (namespace or "default").lower())
 
 
 # ================================================================ AlloyDB (PostgreSQL)
 def _pg_type(t: pa.DataType) -> str:
+    """PostgreSQL column type for an Arrow type (null-typed columns become TEXT)."""
     if pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_null(t):
         return "TEXT"
     if pa.types.is_int64(t):
@@ -58,6 +60,7 @@ def _pg_type(t: pa.DataType) -> str:
 
 
 def _copy_escape(text: str) -> str:
+    """Escape backslash, tab and newlines for COPY text format."""
     return text.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
 
 
@@ -128,6 +131,9 @@ class AlloyDBTableStore:
         self._lock = threading.Lock()
 
     def _connection(self):
+        """Connect on first use through the AlloyDB connector (IAM auth, private IP by default), create the tenant
+        schema and set search_path to it, so all SQL uses unqualified table names.
+        """
         if self._conn is None:
             from google.cloud.alloydb.connector import Connector, IPTypes
 
@@ -143,6 +149,7 @@ class AlloyDBTableStore:
         return self._conn
 
     def _execute(self, sql: str, params: list[Any] | None = None, stream=None):
+        """Run one statement (stream = a COPY FROM STDIN source) and commit; roll back on error. Returns (columns, rows)."""
         conn = self._connection()
         cur = conn.cursor()
         try:
@@ -162,6 +169,11 @@ class AlloyDBTableStore:
         return bool(rows)
 
     def upsert(self, entity: str, rows: pa.Table, key: str) -> None:
+        """Bulk upsert: COPY the batch into a temp staging table, then INSERT ... ON CONFLICT (key) DO UPDATE.
+
+        The target table is created from the batch's Arrow schema with the key as primary key. Re-running a task
+        rewrites the same rows instead of duplicating them.
+        """
         cols = rows.column_names
         col_ddl = ", ".join(f'"{f.name}" {_pg_type(f.type)}' for f in rows.schema)
         stage = f"_stage_{entity}"
@@ -183,6 +195,7 @@ class AlloyDBTableStore:
         return self.query(f'SELECT {sel} FROM "{entity}"')
 
     def query(self, sql: str, params: list[Any] | None = None) -> pa.Table:
+        """Run portable SQL (DuckDB dialect, ? params), translated to PostgreSQL by to_postgres_sql."""
         with self._lock:
             cols, rows = self._execute(to_postgres_sql(sql, bool(params)), params)
         return pa.Table.from_pylist([dict(zip(cols, r)) for r in rows]) if rows else pa.table({c: pa.array([], pa.null()) for c in cols})
@@ -267,6 +280,7 @@ class VertexVectorIndex:
         self._clients = None
 
     def _vs(self):
+        """Vertex AI index (for upserts) and index endpoint (for queries), created on first use."""
         if self._clients is None:
             from google.cloud import aiplatform
 
@@ -276,6 +290,7 @@ class VertexVectorIndex:
         return self._clients
 
     def upsert(self, ids: list[str], vectors: np.ndarray, metadata: list[dict[str, Any]]) -> None:
+        """Stream-update datapoints with a tenant restrict plus one restrict per filter field; the metadata goes to GCS."""
         from google.cloud.aiplatform_v1.types import IndexDatapoint
 
         points = []
@@ -288,6 +303,7 @@ class VertexVectorIndex:
             self._vs()[0].upsert_datapoints(datapoints=points[start:start + 500])
 
     def search(self, vector: np.ndarray, k: int = 5, where: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Nearest neighbours within the tenant (and `where` filters), joined with their GCS metadata."""
         from google.cloud.aiplatform.matching_engine.matching_engine_index_endpoint import Namespace
 
         filters = [Namespace(name="tenant", allow_tokens=[self.tenant])]
@@ -318,6 +334,7 @@ class PubSubEventBus:
         self._client = None
 
     def publish(self, topic: str, event: dict[str, Any]) -> None:
+        """Publish and wait for the ack (30 s), so a failed publish fails the stage instead of being lost."""
         if self._client is None:
             from google.cloud import pubsub_v1
 
@@ -338,6 +355,7 @@ PARTITION_BY = {"claim_header": "service_from_dt", "claim_payment": "payment_dt"
 
 
 def _bq_param_type(v: Any) -> str:
+    """BigQuery parameter type for a Python value (for positional ? parameters)."""
     if isinstance(v, bool):
         return "BOOL"
     if isinstance(v, int):
@@ -393,12 +411,17 @@ class BigQueryAnalyticsStore:
         return self._client
 
     def wants(self, entity: str) -> bool:
+        """Only the configured entities (default: the claims domain) are mirrored to BigQuery."""
         return entity in self.entities
 
     def _table(self, name: str) -> str:
         return f"{self.project}.{self.dataset}.{self.prefix}{name}"
 
     def load(self, entity: str, rows: pa.Table, key: str) -> None:
+        """Mirror one batch: Parquet -> a uniquely named staging table -> create target if needed -> MERGE on the key.
+
+        The staging table is always deleted, even when the MERGE fails.
+        """
         if not rows.num_rows:
             return
         import uuid
@@ -425,6 +448,7 @@ class BigQueryAnalyticsStore:
             self.client.delete_table(stage, not_found_ok=True)
 
     def query(self, sql: str, params: list[Any] | None = None) -> pa.Table:
+        """Run SQL with the dataset as default (unqualified table names) and positional parameters."""
         from google.cloud import bigquery
 
         cfg = bigquery.QueryJobConfig(

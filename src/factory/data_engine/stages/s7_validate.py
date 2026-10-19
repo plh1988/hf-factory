@@ -17,6 +17,7 @@ PHONE = re.compile(r"\(?\b\d{3}\)?[ -]?(\d{3})-\d{4}\b")
 
 
 def luhn_ok(npi: str) -> bool:
+    """Luhn check of an NPI including its check digit, over the 80840 prefix (the NPI standard)."""
     digits = [int(c) for c in "80840" + npi]
     total = 0
     for i, d in enumerate(reversed(digits)):
@@ -31,10 +32,12 @@ RULE_BASE = re.compile(r"^[A-Z]-\d+")
 
 
 def all_rules(ctx: GenContext, present: set[str]) -> list[R.Rule]:
+    """Every rule that applies to this run: foreign keys, domain rules, and a P-01 stamp check per generated entity."""
     return R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)]
 
 
 def _evaluate(ctx: GenContext, rule: R.Rule, present: set[str]) -> dict:
+    """Run one rule's SQL (a count of violating rows); SKIPPED when a table it needs was not generated."""
     if not set(rule.needs) <= present:
         return {"rule": rule.id, "status": "SKIPPED", "violations": None, "description": rule.description,
                 "waiting_for": sorted(set(rule.needs) - present)}
@@ -66,6 +69,7 @@ def check_rules(ctx: GenContext, requested: list[str]) -> tuple[dict[str, str], 
 
 
 def run_rules(ctx: GenContext, families: list[str] | None = None) -> dict:
+    """Run all rules (optionally only some families) and summarise: checked, passed, failed, skipped, referential integrity."""
     present = {e for e in ctx.counts if ctx.stores.tables.exists(e)}
     rule_list = [r for r in all_rules(ctx, present) if families is None or r.id[0] in families]
     results = [_evaluate(ctx, rule, present) for rule in rule_list]
@@ -83,6 +87,9 @@ def run_rules(ctx: GenContext, families: list[str] | None = None) -> dict:
 
 
 def privacy_scan(ctx: GenContext, options: dict | None = None) -> dict:
+    """Privacy checks on the generated data: NPI validity, SSN-like numbers and non-reserved emails or phones in
+    LLM text, and duplicate texts (informational). 'rare_combinations' does not apply: no real records are used.
+    """
     options = options or {"near_duplicates": True, "rare_combinations": True, "reserved_formats": True}
     tables = ctx.stores.tables
     findings: list[str] = []
@@ -122,6 +129,10 @@ def privacy_scan(ctx: GenContext, options: dict | None = None) -> dict:
 
 
 def run(ctx: GenContext, rule_sets: list[str] | None = None, privacy_options: dict | None = None) -> dict:
+    """Stage s7: rules, privacy scan, rule report and manifest (written to the BlobStore).
+
+    The manifest's per-entity checksums are what replays and repro-checks compare against.
+    """
     report = run_rules(ctx, rule_sets)
     privacy = privacy_scan(ctx, privacy_options)
     r = ctx.spec

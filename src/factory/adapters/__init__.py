@@ -13,6 +13,7 @@ from factory.config import AdapterConfig, Profile
 
 
 def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any]]]:
+    """port -> kind -> constructor. GCP classes are imported lazily so memory profiles need no Google libraries."""
     from factory.adapters import llm, memory
     from factory.adapters.deploy import CloudRunDeployer, LocalDeployer
     from factory.adapters.jobs import CloudRunJobExecutor, LocalExecutor
@@ -38,6 +39,10 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
 
 
 def build_stores(profile: Profile, namespace: str | None = None) -> Stores:
+    """Construct every adapter of a profile for one tenant namespace.
+
+    analytics kind 'tables' reuses the TableStore (memory profiles); 'bigquery' mirrors claims entities to BigQuery.
+    """
     reg = _registry()
 
     def make(port: str) -> Any:

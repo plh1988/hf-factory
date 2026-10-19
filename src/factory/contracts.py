@@ -128,6 +128,7 @@ class RunSpec(BaseModel):
 
 
 def payload_hash(payload: dict[str, Any]) -> str:
+    """sha256 of a payload's canonical JSON; stored per stage in the run spec so replays can prove they used the same input."""
     return canonical_hash({k: v for k, v in payload.items() if k not in ("shards", "tenant_id")})
 
 
@@ -155,6 +156,7 @@ class EntityResult(BaseModel):
 
 
 class StageResult(_Open):
+    """What a stage returns: status, row counts and checksums per entity, timing, plus stage-specific extras."""
     stage: str
     status: Literal["COMPLETED", "FAILED", "DEPLOYED"]
     duration_s: float
@@ -165,6 +167,7 @@ class StageResult(_Open):
 
 
 class Manifest(_Open):
+    """The dataset manifest written by s7: run settings, payload hashes and per-entity counts and checksums."""
     tenant_id: str
     dataset_id: str
     data_spec_hash: str

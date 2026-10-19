@@ -21,6 +21,7 @@ from factory.contracts import S2Output
 
 
 def _profile(args):
+    """Active profile and s2 output: from --s2 <file>, else from FACTORY_S2_JSON (how Cloud Run containers get it)."""
     if args.s2:
         s2 = S2Output.load(args.s2)
     else:
@@ -30,6 +31,7 @@ def _profile(args):
 
 
 def cmd_doctor(args) -> int:
+    """Print the active profile and every adapter's health check; errors are reported, not raised."""
     profile, _ = _profile(args)
     stores = build_stores(profile)
     print(f"FACTORY_PROFILE = {profile.name}")
@@ -44,6 +46,7 @@ def cmd_doctor(args) -> int:
 
 
 def cmd_serve(args) -> int:
+    """Run the REST control plane (and, after s8, the tenant API) with uvicorn."""
     import uvicorn
 
     from factory.control.registry import Registry
@@ -103,6 +106,7 @@ def cmd_api(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point of the `factory` command."""
     p = argparse.ArgumentParser(prog="factory", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--s2", help="s2 output JSON (data store locations); needed for the gcp profile")
     p.add_argument("-v", "--verbose", action="store_true", help="log progress events")

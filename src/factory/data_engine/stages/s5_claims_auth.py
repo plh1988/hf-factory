@@ -30,6 +30,12 @@ DRUG_MEDIAN_CENTS = {1: 1200, 2: 3500, 3: 25000, 4: 90000, 5: 150000}
 
 # ------------------------------------------------------------------ inputs read from the TableStore
 def load_inputs(ctx: GenContext) -> dict:
+    """Read everything claims generation needs from the TableStore once per stage.
+
+    Returns members with their latest enrollment, plan terms, provider pools per (plan, role) for in-network picks,
+    an out-of-network pool per role, provider types and TINs, and each member's active PCP (requesting provider
+    for authorizations).
+    """
     q = ctx.stores.tables.query
     members = q(
         """SELECT m.member_id, m.member_number, m.lob, m.scenario_id, e.plan_id, e.effective_dt, e.term_dt, e.status
@@ -87,11 +93,25 @@ def pick_provider(inp: dict, plan_ids: np.ndarray, role: str, in_network: np.nda
 
 
 def to_date(a) -> np.ndarray:
+    """Python dates (None allowed) -> numpy datetime64[D] with NaT for missing values."""
     return np.array([np.datetime64(x, "D") if x is not None else NAT for x in a], dtype="datetime64[D]")
 
 
 # ------------------------------------------------------------------ claims
 def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
+    """Claims and claim lines for one shard of members, as parallel numpy arrays (written later by write_claims).
+
+    Order of work (each step only uses the ones before it):
+      1. how many claims each member has (Poisson around claims/members), inside their coverage window (R-02)
+      2. claim type, dates of service, received/adjudicated dates (T-02), emergency flag
+      3. billing/rendering/facility providers from the plan's participating pools (R-04)
+      4. status: baseline denial/pend draws, then scenario recipes override them
+      5. lines and procedure codes; PA-required codes are flagged so s5 can create the auth first (R-03)
+      6. money in integer cents: allowed, billed, deductible, copay, coinsurance, paid (F-01, F-02)
+
+    Arrays: `ci` maps claim -> member position in the shard, `cj` is the claim's number for that member,
+    `li` maps line -> claim position, `ln` is the line number. Keys: claim = member*64 + j, line = claim*8 + n.
+    """
     m = {k: v[sl] for k, v in inp["members"].items()}
     midx = np.array([int(x[4:]) - 1 for x in m["member_number"]], dtype=np.int64)
     rr = ctx.rr("claim_header:count", midx)
@@ -103,13 +123,15 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     lam = ctx.spec.volumes["claims"] / max(len(inp["members"]["member_id"]), 1)
     k = np.where(span >= 0, np.minimum(rr.poisson("n_claims", lam), 20), 0)
 
+    # ---- claims: expand members into claim rows (ci = member position, cj = claim number for that member)
     ci = np.repeat(np.arange(len(midx)), k)
     cj = np.concatenate([np.arange(c) for c in k]) if len(ci) else np.array([], np.int64)
-    ckey = midx[ci] * 64 + cj
+    ckey = midx[ci] * 64 + cj  # stable claim key: member index * 64 + claim number (< 20; 32+ is used for replacements)
     n = len(ckey)
     crr = ctx.rr("claim_header", ckey)
     scen = ctx.scenarios("claim", crr)
     ctype = crr.choice("type", ["PHARMACY", "PROFESSIONAL", "FACILITY"], [40, 45, 15])
+    # forced scenarios (e.g. PCS-02, MCI-02, PAP-02) need a clean professional, in-network, non-emergency claim
     forced = np.isin(scen, sorted(catalog.FORCED_CLAIM_SCENARIOS))
     ctype = np.where(forced, "PROFESSIONAL", ctype)
     inpatient = (ctype == "FACILITY") & crr.bernoulli("inpatient", 0.6)
@@ -119,12 +141,14 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     early = np.isin(scen, ["PAP-02", "PAP-03", "PAP-04"])  # appeals need time to be filed or decided
     s_from = np.where(early, w_start[ci], s_from)
     s_to = s_from + los.astype("timedelta64[D]")
+    # T-02: service <= received <= adjudicated <= paid, never after as_of; claims not yet adjudicated stay RECEIVED
     received = np.minimum(s_to + crr.integers("recv_lag", 1, 8).astype("timedelta64[D]"), ctx.as_of)
     adjud = received + crr.integers("adj_lag", 1, 6).astype("timedelta64[D]")
     in_process = adjud > ctx.as_of
     emergency = np.where(ctype == "FACILITY", inpatient & crr.bernoulli("er", 0.35), (ctype == "PROFESSIONAL") & crr.bernoulli("er_p", 0.05))
     emergency &= ~forced
 
+    # ---- providers: 92% in network; pick_provider reports the truth if the plan has no participating provider (R-04)
     plan_ids = m["plan_id"][ci]
     in_net = crr.bernoulli("in_network", 0.92) | forced
     role = np.where(ctype == "PHARMACY", "PHARMACY", np.where(ctype == "FACILITY",
@@ -160,6 +184,7 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
             pend_reason[mask] = recipe["pend_reason"]
     status[in_process] = "RECEIVED"
     required = np.array([catalog.SCENARIOS[x]["claim_status"] if x in catalog.HAPPY_CLAIM_SCENARIOS else "" for x in scen], dtype=object)
+    # happy-path tags are not forced: they stay only on claims that ended in the recipe's status (keeps the denial rate)
     happy_unmet = np.isin(scen, sorted(catalog.HAPPY_CLAIM_SCENARIOS)) & (status != required)
     happy_unmet |= (scen == "PAP-01") & (np.isin(denial_cat, ["DUPLICATE", "AUTH"]) | (ctype == "PHARMACY"))
     scen = np.where(in_process | happy_unmet, "BASE", scen)
@@ -172,7 +197,7 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
                        np.minimum(2 + crr.poisson("n_fac_lines", 1.5), 6), np.minimum(1 + crr.poisson("n_prof_lines", 1.3), 4)))
     li = np.repeat(np.arange(n), n_lines)
     ln = np.concatenate([np.arange(c) for c in n_lines]) if n else np.array([], np.int64)
-    lkey = ckey[li] * 8 + ln
+    lkey = ckey[li] * 8 + ln  # stable line key: claim key * 8 + line number
     lrr = ctx.rr("claim_line", lkey)
     needs_pa_prof = (ctype == "PROFESSIONAL") & ~edge & ~emergency & crr.bernoulli("pa_prof", 0.06)
     needs_pa_fac = inpatient & ~emergency & crr.bernoulli("pa_fac", 0.25)
@@ -196,6 +221,8 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     drug_i = crr.integers("drug", 0, len(DRUGS_NO_PA))
     tier = np.array([DRUGS_NO_PA[d][2] for d in drug_i], dtype=np.int64)
 
+    # ---- money, in integer cents (no float rounding): allowed = contract rate x units (80% of it out of network),
+    # billed = allowed x 1.4-2.6 markup; denied or pended lines get allowed = paid = 0
     rate_cents = np.array([CPT[c][2] * 100 if c else 0 for c in cpt], dtype=np.int64) * units
     drug_cents = np.round(np.array([DRUG_MEDIAN_CENTS[t] for t in tier]) * np.exp(crr.normal("drug_cost", 0, 0.3))).astype(np.int64)
     allowed_full = np.where(lt == "PHARMACY", drug_cents[li], np.where(network[li] == "IN", rate_cents, (rate_cents * 0.8).astype(np.int64)))
@@ -221,7 +248,7 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     coins = np.zeros(len(li), np.int64)
     co_line = paid_line & ~cp_line
     coins[co_line] = ((allowed[co_line] - ded[co_line]) * coins_pct[li][co_line]) // 100
-    paid = allowed - ded - copay - coins
+    paid = allowed - ded - copay - coins  # F-02; member responsibility = ded + copay + coins (the PR adjustments)
 
     line_status = np.where(status[li] == "PAID", "PAID", np.where(status[li] == "DENIED", "DENIED", "PENDED"))
 
@@ -246,7 +273,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     """Claim-linked APPROVED auths (R-03/T-04) plus standalone auths at the D-06 outcome mix."""
     midx, m = c["midx"], c["m"]
     # linked: one per claim with a PA-required line that is not an emergency
-    lk = np.where(c["needs_pa"])[0]
+    lk = np.where(c["needs_pa"])[0]  # claims that need an auth; their auth keys reuse the claim key
     # standalone
     rr = ctx.rr("auth_request:count", midx)
     k = np.minimum(rr.poisson("n_auths", ctx.spec.volumes.get("authorizations", 0) / max(len(inp["members"]["member_id"]), 1) * 0.5), 5)
@@ -254,7 +281,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     sj = np.concatenate([np.arange(x) for x in k]) if len(si) else np.array([], np.int64)
 
     a_member = np.concatenate([c["ci"][lk], si])
-    a_key = np.concatenate([c["ckey"][lk], midx[si] * 64 + 32 + sj])
+    a_key = np.concatenate([c["ckey"][lk], midx[si] * 64 + 32 + sj])  # standalone auths use member*64 + 32 + j
     linked = np.concatenate([np.ones(len(lk), bool), np.zeros(len(si), bool)])
     n = len(a_key)
     arr = ctx.rr("auth_request", a_key)
@@ -478,6 +505,12 @@ def plan_reprocessing(ctx: GenContext, c: dict, appeals: dict) -> dict:
 
 
 def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) -> None:
+    """Write every claim entity for a shard, adding appeals, reprocessing and accumulators.
+
+    Reprocessed claims keep their original row (status ADJUSTED or REPROCESSED) and get a replacement claim
+    (frequency code 7, key = original + 32) with its own lines, adjustments and payment, plus a reprocessing_history
+    row (R-07, F-06). Only entities listed in the payloads are written (ctx.wants).
+    """
     li, ln, scen, ctype = c["li"], c["ln"], c["scen"], c["ctype"]
     crr = c["crr"]
     appeals = plan_appeals(ctx, c)
@@ -499,7 +532,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
     r_paid = r_allowed - r_coins
     nr = len(r)
     r_tot = lambda x: np.bincount(r_li, weights=x, minlength=nr).astype(np.int64)  # noqa: E731
-    r_ckey = c["ckey"][r] + 32
+    r_ckey = c["ckey"][r] + 32  # replacement claim key: original + 32 (claim numbers stay below 20)
     r_paid_dt = np.minimum(rp["when"] + DAY, ctx.as_of)
 
     claim_ids = np.asarray(ctx.ids("claim_header", c["ckey"]), dtype=object)

@@ -42,6 +42,7 @@ def stage_seed(root_seed: int, stage: str) -> int:
 
 @dataclass
 class DataEngineRun:
+    """What s7 produces for a run: stage results, rule report, privacy scan and manifest; `passed` is the quality gate."""
     results: list[StageResult] = field(default_factory=list)
     manifest: Manifest | None = None
     report: dict[str, Any] = field(default_factory=dict)
@@ -57,6 +58,7 @@ SHARDED = {"s4": s4_members, "s5": s5_claims_auth}
 
 
 def _loaded_to(stores, ents: list[str]) -> str:
+    """Human-readable target for a stage result, e.g. 'memory://tables' or 'alloydb://... + bigquery://... (9 entities)'."""
     mirrored = [e for e in ents if stores.analytics is not None and stores.analytics.wants(e)]
     return stores.tables.uri + (f" + {stores.analytics.uri} ({len(mirrored)} entities)" if mirrored else "")
 
@@ -72,6 +74,9 @@ def run_sharded(ctx: GenContext, stage: str) -> list[str]:
     n = mod.task_count(ctx, prep) if stage == "s5" else mod.task_count(ctx)
 
     def local_task(i: int) -> TaskResult:
+        """Run task i in-process with its own counters, so a retried task's partial counts are discarded
+        instead of double-counted (its rows are upserts, so they are simply rewritten).
+        """
         saved = ctx.counts, ctx.checksums
         ctx.counts, ctx.checksums = {}, {}
         try:

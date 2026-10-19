@@ -20,6 +20,8 @@ PLAN_TERMS = {  # lob -> (network types, deductibles, oop_max, copay_pcp, copay_
 }
 
 
+# NPIs are 9 digits + a Luhn check digit computed over the prefix 80840 (the NPI standard). Bases start at
+# 190000000 and step by 7 so they look realistic; they are not yet checked against the real NPPES registry.
 def luhn_npi(base9: np.ndarray) -> list[str]:
     """10-digit NPI: 9-digit base + Luhn check digit computed with the 80840 prefix."""
     out = []
@@ -39,6 +41,7 @@ DEFAULT_LOB_CYCLE = ["MEDICARE_ADV", "COMMERCIAL", "MEDICAID_MCO"]
 
 
 def n_plans(ctx: GenContext) -> int:
+    """Number of plans to create: volumes.plans from the s3 payload, default 4."""
     return int(ctx.spec.volumes.get("plans", N_PLANS))
 
 
@@ -56,6 +59,11 @@ def plan_lobs(ctx: GenContext) -> list[str]:
 
 
 def gen_plans(ctx: GenContext) -> pa.Table:
+    """Plans with cost-share terms by LOB (deductible, out-of-pocket max, copays, coinsurance, allowances).
+
+    Money is generated in integer cents and stored as DECIMAL(14,2). Every plan lists the PA-required CPT codes,
+    which s5 uses to decide when a claim needs an authorization (rule R-03).
+    """
     N_PLANS = n_plans(ctx)  # noqa: N806 - local count shadows the default
     keys = np.arange(N_PLANS)
     lobs = plan_lobs(ctx)
@@ -92,6 +100,11 @@ def gen_plans(ctx: GenContext) -> pa.Table:
 
 
 def gen_providers(ctx: GenContext) -> pa.Table:
+    """Providers: PCPs, specialists and facilities, with Luhn-valid synthetic NPIs and 9xxxxxxxx TINs (rule P-02).
+
+    Rows 0-3 are always one facility of each kind (hospital, SNF, home health, pharmacy) so even tiny datasets can
+    place facility and pharmacy claims. `home_place` anchors the provider's first practice location.
+    """
     n = int(ctx.spec.volumes["providers"])
     keys = np.arange(n)
     rr = ctx.rr("provider", keys)
@@ -133,6 +146,11 @@ def gen_providers(ctx: GenContext) -> pa.Table:
 
 
 def gen_participation(ctx: GenContext, providers: pa.Table, plans: pa.Table) -> pa.Table:
+    """One network_participation row per (provider, plan): status, tier, panel and onboarding stage.
+
+    Start dates are at least 400 days back so any claim in a 12-month history window falls inside participation
+    (R-04). TERMED providers are TERMED on every plan; only PCPs can have a CLOSED panel.
+    """
     n_prov, n_plan = providers.num_rows, plans.num_rows
     pi = np.repeat(np.arange(n_prov), n_plan)
     li = np.tile(np.arange(n_plan), n_prov)
@@ -166,6 +184,11 @@ def gen_participation(ctx: GenContext, providers: pa.Table, plans: pa.Table) -> 
 
 
 def gen_locations(ctx: GenContext, providers: pa.Table) -> pa.Table:
+    """One practice location per provider, plus a second one for 40%.
+
+    8% of locations are deliberately stale (last verified over 90 days ago) and tagged DQ-STALE-DIRECTORY, so the
+    directory-accuracy scenarios have data and rule T-07 exempts exactly those rows.
+    """
     n = providers.num_rows
     rrp = ctx.rr("practice_location:count", np.arange(n))
     n_loc = 1 + rrp.bernoulli("second", 0.4).astype(int)
@@ -215,6 +238,7 @@ DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
 
 
 def gen_access_standards(ctx: GenContext, plans: pa.Table) -> None:
+    """Access standards per plan x specialty x geography: maximum distance (miles) and maximum wait (days), from ACCESS_RULES."""
     rows = [(pi, ri, gi) for pi in range(plans.num_rows) for ri in range(len(ACCESS_RULES)) for gi in range(3)]
     keys = np.array([pi * 1000 + ri * 10 + gi for pi, ri, gi in rows], dtype=np.int64)
     plan_ids = plans["plan_id"].to_pylist()
@@ -229,6 +253,7 @@ def gen_access_standards(ctx: GenContext, plans: pa.Table) -> None:
 
 
 def gen_ratings(ctx: GenContext, providers: pa.Table) -> None:
+    """One quality/satisfaction rating per provider; ratings with fewer than 20 reviews are hidden by provider search."""
     n = providers.num_rows
     keys = np.arange(n)
     rr = ctx.rr("provider_rating", keys)

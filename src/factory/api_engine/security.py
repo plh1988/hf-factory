@@ -21,6 +21,7 @@ TOKEN_TTL_S = 3600
 
 
 def error(status: int, code: str, message: str) -> HTTPException:
+    """The API's error shape: {error, message, is_synthetic}."""
     return HTTPException(status_code=status, detail={"error": code, "message": message, "is_synthetic": True})
 
 
@@ -39,6 +40,7 @@ class ClientRegistry:
         self.tokens: dict[str, tuple[str, float]] = {}
 
     def issue(self, client_id: str, client_secret: str) -> str:
+        """Client-credentials grant: check id and secret (constant time) and issue a random bearer token valid for 1 hour."""
         if not (secrets.compare_digest(client_id, self.client_id) and secrets.compare_digest(client_secret, self.secret)):
             raise error(401, "INVALID_CLIENT", "Unknown client or wrong secret.")
         token = secrets.token_urlsafe(24)
@@ -46,6 +48,7 @@ class ClientRegistry:
         return token
 
     def client_for(self, token: str) -> str:
+        """Client id of a valid, unexpired token, else 401. Tokens are held in memory, per process."""
         found = self.tokens.get(token)
         if not found or found[1] < time.time():
             raise error(401, "INVALID_TOKEN", "Missing, unknown or expired bearer token.")
@@ -53,6 +56,7 @@ class ClientRegistry:
 
 
 class RateLimiter:
+    """Sliding one-minute window of request times per client; over the limit -> 429. Per process, like the tokens."""
     def __init__(self, per_minute: int) -> None:
         self.per_minute = per_minute
         self.hits: dict[str, deque] = defaultdict(deque)
@@ -70,6 +74,7 @@ bearer = HTTPBearer(auto_error=False)
 
 
 def require_client(request: Request, cred: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:
+    """FastAPI dependency on every /v1 endpoint: valid bearer token, then the rate limit. Returns the client id."""
     if cred is None:
         raise error(401, "INVALID_TOKEN", "Missing bearer token.")
     client = request.app.state.clients.client_for(cred.credentials)

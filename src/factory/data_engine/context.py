@@ -26,6 +26,9 @@ def stamps(values: np.ndarray) -> pa.Array:
 
 @dataclass
 class GenContext:
+    """Everything a generator needs for one run: the run spec, the stores, the shard count, and running
+    per-entity row counts and checksums (summed across shards, so the order of shards never matters).
+    """
     spec: RunSpec
     stores: Stores
     shards: int = 4
@@ -44,6 +47,7 @@ class GenContext:
         return self.spec.entities
 
     def wants(self, entity: str) -> bool:
+        """True if some payload in this run listed the entity (generators skip entities nobody asked for)."""
         return entity in self.in_scope
 
     def unimplemented(self) -> list[str]:
@@ -51,9 +55,11 @@ class GenContext:
 
     # ------------------------------------------------------------ randomness and ids
     def rr(self, entity: str, keys: np.ndarray) -> RowRandom:
+        """Random streams for these row keys of an entity (deterministic per seed, entity and key)."""
         return RowRandom(self.seed, entity, keys)
 
     def ids(self, entity: str, keys: np.ndarray) -> list[str]:
+        """Primary keys: UUIDv5(dataset_id, entity, seed, row key)."""
         return row_ids(self.dataset_id, entity, self.seed, keys)
 
     def scenarios(self, anchor: str, rr: RowRandom) -> np.ndarray:
@@ -95,5 +101,6 @@ class GenContext:
         return table
 
     def shard_ranges(self, n: int) -> list[tuple[int, int]]:
+        """Split n anchor rows into `shards` contiguous index ranges (empty ranges are dropped)."""
         per = -(-n // self.shards)
         return [(s * per, min(n, (s + 1) * per)) for s in range(self.shards) if s * per < n]

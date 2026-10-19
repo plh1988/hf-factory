@@ -23,6 +23,7 @@ ProfileName = Literal["memory", "memory-offline", "gcp"]
 
 
 class Settings(BaseSettings):
+    """Environment settings (prefix FACTORY_, also read from .env). FACTORY_PROFILE alone picks the backends."""
     profile: ProfileName = "memory-offline"
     s2_json: str | None = None  # FACTORY_S2_JSON: s2 output inline (Cloud Run tasks/services get it this way)
     config_dir: Path | None = None  # FACTORY_CONFIG_DIR: where profile yaml files live when installed (e.g. /app/config)
@@ -30,14 +31,17 @@ class Settings(BaseSettings):
 
 
 class AdapterConfig(BaseModel):
+    """One adapter's settings from the profile yaml: `kind` picks the implementation, every other key is passed through."""
     model_config = ConfigDict(extra="allow")
     kind: str
 
     def get(self, key: str, default: Any = None) -> Any:
+        """Adapter-specific setting (any yaml key other than `kind`)."""
         return (self.model_extra or {}).get(key, default)
 
 
 class Profile(BaseModel):
+    """A whole backend profile (config/<name>.yaml): one AdapterConfig per port, plus row limits."""
     name: str
     tables: AdapterConfig
     blobs: AdapterConfig
@@ -66,6 +70,10 @@ def _resolve(value: Any, s2: S2Output | None) -> Any:
 
 
 def load_profile(name: str | None = None, s2: S2Output | None = None) -> Profile:
+    """Load config/<name>.yaml (default: FACTORY_PROFILE) and fill ${s2.<field>} placeholders from the s2 output.
+
+    The gcp profile takes its project, instance, bucket and dataset names from the s2 provisioning output.
+    """
     settings = Settings()
     name = name or settings.profile
     path = (settings.config_dir or CONFIG_DIR) / f"{name}.yaml"

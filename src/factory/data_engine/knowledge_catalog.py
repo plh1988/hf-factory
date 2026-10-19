@@ -16,6 +16,7 @@ DENIAL_ORDER = list(catalog.DENIAL_CATEGORIES)
 
 @dataclass
 class AssetSpec:
+    """One knowledge document to generate: its deterministic key, type, title, audience, the facts for the prompt, and links."""
     key: int
     asset_type: str
     title: str
@@ -36,6 +37,9 @@ def pa_policy_asset_id(ctx, cpt: str) -> str:
 
 
 def asset_specs(ctx, plans: list[dict]) -> list[AssetSpec]:
+    """The run's documents, keyed by type and position (plan docs 1000+, provider manual 2000, PA policies
+    3000+, claims policies 4000+, FAQ libraries 5000+, agent SOPs 6000+), built only from catalog facts and plan terms.
+    """
     specs: list[AssetSpec] = []
     for i, p in enumerate(plans):
         terms = [

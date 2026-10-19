@@ -11,6 +11,9 @@ from factory.adapters.ports import Stores
 
 
 class Repository:
+    """Read access for the API endpoints, through the TableStore port with portable SQL (DuckDB locally, AlloyDB in
+    the cloud). Methods return plain dicts; `*_ref` lookups accept either the internal id or the business number.
+    """
     def __init__(self, stores: Stores) -> None:
         self.tables = stores.tables
 

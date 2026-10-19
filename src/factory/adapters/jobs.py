@@ -23,6 +23,7 @@ log = logging.getLogger("factory.jobs")
 
 @dataclass
 class TaskResult:
+    """What one task reports back: rows written and checksum sum per entity (merged by the runner), and attempts used."""
     index: int
     counts: dict[str, int] = field(default_factory=dict)
     checksums: dict[str, int] = field(default_factory=dict)
@@ -30,10 +31,12 @@ class TaskResult:
 
 
 class TaskFailed(RuntimeError):
+    """A task (or the whole Cloud Run execution) failed after its retries."""
     pass
 
 
 def task_key(stage: str, index: int) -> str:
+    """BlobStore key where task <index> of a stage writes its partial result (counts, hex checksums)."""
     return f"runs/{stage}/tasks/{index:04d}.json"
 
 
@@ -44,6 +47,7 @@ class LocalExecutor:
         self.max_retries = int(cfg.get("max_retries", 2))
 
     def run(self, stage: str, task_count: int, run_task: Callable[[int], TaskResult], blobs: Any, args: list[str]) -> list[TaskResult]:
+        """Run the tasks one after another in this process, retrying each failed task up to max_retries times."""
         results = []
         for i in range(task_count):
             for attempt in range(1, self.max_retries + 2):
@@ -74,6 +78,12 @@ class CloudRunJobExecutor:
         self.s2_json = cfg.get("s2_json")
 
     def run(self, stage: str, task_count: int, run_task: Callable[[int], TaskResult], blobs: Any, args: list[str]) -> list[TaskResult]:
+        """Start one Cloud Run Job execution with task_count tasks and wait for it.
+
+        Each task runs `factory <args>` (e.g. task --stage s4 --tenant t) in the same image with FACTORY_PROFILE=gcp.
+        Partial results are cleared first, then read back per task after all tasks succeed (`run_task` is unused
+        here: the work happens in the containers).
+        """
         from google.cloud import run_v2
         from google.protobuf import duration_pb2
 

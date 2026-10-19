@@ -25,6 +25,11 @@ SYSTEM = (
 
 # ------------------------------------------------------------------ care management
 def gen_care(ctx: GenContext) -> None:
+    """Transition-of-care records and TOC care cases, one per inpatient facility claim (bill type 0111) - rule R-10.
+
+    The call is due 48 hours after discharge and the follow-up visit within 7 days (T-06); readmit_30d is derived
+    from the member's other admissions, never drawn.
+    """
     t = ctx.stores.tables.query(
         """SELECT claim_id, claim_number, member_id, facility_npi, service_from_dt, service_to_dt
            FROM claim_header WHERE bill_type = '0111' ORDER BY claim_number"""
@@ -81,10 +86,15 @@ def gen_care(ctx: GenContext) -> None:
 
 # ------------------------------------------------------------------ knowledge
 def cache_key(model: str, prompt: str, seed: int) -> str:
+    """Content-addressed cache key: the same model, prompt version, prompt and seed always reuse the same text."""
     return hashlib.sha256(f"{model}|{PROMPT_VERSION}|{prompt}|{seed}".encode()).hexdigest()
 
 
 def generate_text(ctx: GenContext, title: str, kind: str, audience: str, facts: list[str], stats: dict) -> tuple[str, str]:
+    """Text for one document from the LLM, through the cache. The prompt contains only the given facts.
+
+    Returns (text, cache key); stats counts generated vs cached texts for the stage result.
+    """
     prompt = (
         f"TITLE: {title}\nDOCUMENT TYPE: {kind}\nAUDIENCE: {audience}\n"
         "Write the document using only these facts:\n" + "\n".join(f"- {f}" for f in facts)
@@ -102,6 +112,7 @@ def generate_text(ctx: GenContext, title: str, kind: str, audience: str, facts: 
 
 
 def chunk_text(text: str, max_words: int = 350) -> list[str]:
+    """Split a document into retrieval chunks of whole paragraphs, at most max_words words each."""
     chunks, cur = [], []
     for para in [p.strip() for p in text.split("\n\n") if p.strip()]:
         if cur and sum(len(x.split()) for x in cur) + len(para.split()) > max_words:
@@ -114,6 +125,10 @@ def chunk_text(text: str, max_words: int = 350) -> list[str]:
 
 
 def gen_knowledge(ctx: GenContext) -> dict:
+    """Knowledge assets for the run: documents (LLM text), chunks, embeddings in the vector index, then
+    FAQs, SOPs, links and golden QA. Asset ids are deterministic (see knowledge_catalog), so s5 can already cite
+    PA policies. Returns stage-result extras: LLM cache statistics and the number of indexed chunks.
+    """
     plans = ctx.stores.tables.query(
         "SELECT plan_id, plan_code, plan_name, lob, network_type, plan_year, deductible, oop_max, copay_pcp, "
         "copay_specialist, coinsurance_pct FROM plan ORDER BY plan_code"
@@ -189,6 +204,9 @@ def gen_knowledge(ctx: GenContext) -> dict:
 
 def write_faq_sop_links_golden(ctx: GenContext, specs: list[AssetSpec], a_ids: list[str],
                                chunks_by_asset: dict[str, list[str]], stats: dict) -> None:
+    """Derived knowledge rows: FAQ entries (answers through the LLM), agent SOPs from the use-case catalog,
+    asset links (plan, CPT, denial code, use case; rule R-11) and the golden QA set (answer, escalate, abstain).
+    """
     by_key = {s.key: (s, aid) for s, aid in zip(specs, a_ids)}
     manual = next(s for s in specs if s.asset_type == "PROVIDER_MANUAL")
 
@@ -294,6 +312,10 @@ def gen_cohorts_and_campaigns(ctx: GenContext) -> tuple[list[str], list[str]]:
 
 
 def gen_programs_and_outreach(ctx: GenContext, campaign_ids: list[str]) -> None:
+    """Disease-program enrollments (12% of members) and outreach contact history.
+
+    Outreach without a consent basis is SUPPRESSED (C-07) and every AI contact discloses that it is AI (A-04).
+    """
     members = ctx.stores.tables.query("SELECT member_id, member_number FROM member_demographics ORDER BY member_number")
     mids = np.array(members["member_id"].to_pylist(), dtype=object)
     midx = np.array([int(x[4:]) - 1 for x in members["member_number"].to_pylist()], dtype=np.int64)
@@ -336,6 +358,7 @@ def gen_programs_and_outreach(ctx: GenContext, campaign_ids: list[str]) -> None:
 
 
 def gen_care_plans(ctx: GenContext) -> None:
+    """Care plans for 80% of care cases: a goal, a measure and its baseline, target and current value."""
     if not ctx.stores.tables.exists("care_case"):
         return
     cases = ctx.stores.tables.query("SELECT case_id, member_id, opened_dt FROM care_case ORDER BY case_id")

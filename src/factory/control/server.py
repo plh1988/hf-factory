@@ -33,23 +33,36 @@ from factory.data_engine.runner import STAGES, DataEngineError, run_stage
 
 
 def _rejected(exc: JobRejected) -> JSONResponse:
+    """JSON error body for a rejected payload."""
     return JSONResponse({"error": exc.code, "message": exc.message, "details": exc.details}, status_code=exc.status)
 
 
 def create_control_app(registry: Registry) -> FastAPI:
+    """The control-plane FastAPI app: one POST per stage, run status and artifact endpoints.
+
+    After a successful s8 the tenant API is mounted at / on this same app, so one server serves both.
+    """
     app = FastAPI(title="Healthcare AI Platform Factory - engine control plane", version="0.3.0",
                   description=__doc__, docs_url="/factory/docs", openapi_url="/factory/openapi.json", redoc_url=None)
     app.state.registry = registry
 
     def unmount_tenant_api() -> None:
+        """Remove the mounted tenant API (after a data stage re-runs, the API must be deployed again)."""
         app.router.routes[:] = [r for r in app.router.routes if not (isinstance(r, Mount) and r.name == "tenant-api")]
 
     def mount_tenant_api(tenant_app: FastAPI) -> None:
+        """Serve the tenant API at / (replacing an earlier one); /factory routes are matched first."""
         unmount_tenant_api()
         app.router.routes.append(Mount("/", app=tenant_app, name="tenant-api"))
 
     # ------------------------------------------------------------ data engine stages
     def data_stage(stage: str):
+        """Build the POST handler for a data-engine stage.
+
+        The handler resolves the tenant and run, validates the payload (a rejected payload leaves the run unchanged),
+        saves the payload as a blob, runs the stage and records the result. Re-running an earlier stage invalidates s7
+        and s8. One job runs at a time (registry.lock).
+        """
         job_name = STAGES[stage][0]
 
         def handler(job: DataJob, tenant: str | None = Query(None, description="Override tenant resolution")) -> Any:
@@ -130,6 +143,7 @@ def create_control_app(registry: Registry) -> FastAPI:
 
     # ------------------------------------------------------------ status and artifacts
     def _run(tenant: str):
+        """The tenant's run, or a 404 NO_RUN rejection."""
         if tenant not in registry.runs:
             raise JobRejected(404, "NO_RUN", f"No run for tenant {tenant!r}. Start with POST /factory/data-engine/s3.")
         return registry.runs[tenant]
