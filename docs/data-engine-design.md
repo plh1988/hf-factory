@@ -18,7 +18,95 @@ runs a privacy scan and writes a manifest with per-entity checksums. A green s7 
 | Spec scenarios run end to end | S1–S4 (S2, S3 scaled to the in-memory row limit) |
 | Throughput (in memory, one laptop core) | S1 at spec size (50k members, ~815k rows) in ~10 s; S3 scaled (15k members, ~750k rows) in ~16 s |
 
-## 2. Scope
+## 2. How the rule-based generation works
+
+**In one sentence:** the generator builds a fictional health plan the way a real one works, in the order a real one
+works, and every number is constrained by the same business rules a real plan follows. Randomness only chooses
+*within* what the rules allow; it never produces free-floating values.
+
+### 2.1 Four ingredients
+
+| Ingredient | Question it answers | Example |
+|---|---|---|
+| **Catalog** | *What* exists? | 42 entities (member, plan, claim, claim line, authorization …) with fields and keys |
+| **Distributions** | *How much and how often?* | age by line of business (Medicare 65+ for 88%), 6 claims per member per year, 10% denials, 82% of authorizations approved |
+| **Rules** | *What must always be true?* | a claim's service date lies inside an enrollment; billed ≥ allowed ≥ paid; urgent authorizations are decided within 72 hours |
+| **Scenarios** | *Which deliberate stories must exist?* | PCS-02 claim pended for records, MCI-02 denied for missing authorization, MBN-04 caregiver outside their scope |
+
+### 2.2 Built in dependency order, like the real world
+
+```mermaid
+flowchart LR
+  A["Plans and providers<br/>(s3)"] --> B["Members, enrollment, PCP<br/>(s4)"] --> C["Claims and authorizations<br/>(s5)"] --> D["Care records and documents<br/>(s6)"] --> E["Validation<br/>(s7)"]
+```
+
+Each layer only points at things that already exist, so links are valid **by construction**: a member's PCP is
+chosen only from providers who participate in that member's plan with an open panel; a claim is only created inside
+that member's enrollment dates; a transition-of-care record only follows an inpatient discharge claim.
+
+### 2.3 Walk-through: one claim
+
+Member `MBR-0000042`, Medicare Advantage plan:
+
+1. **When.** The service date is drawn inside the member's enrollment window and the claims history window (R-02,
+   satisfied by construction rather than repaired afterwards).
+2. **Who billed.** 92% of the time the billing provider comes from the plan's participating pool, so the claim is
+   in network (R-04); otherwise an out-of-network provider. If the plan has no participating provider of the needed
+   type, the claim is labelled out of network. (s7 validation caught exactly this case during development.)
+3. **What was done.** Procedure codes come from the pinned reference table (F-04). If a code requires prior
+   authorization and the claim is not an emergency, an **approved authorization is created first**: received before
+   the service date, with a validity window covering it (R-03, T-04). Emergencies never need one (C-04).
+4. **Money, in integer cents.**
+   - allowed = contract rate × units; billed = allowed × a 1.4–2.6 markup
+   - the deductible applies on the member's first claim of the year; a copay on the office-visit line;
+     coinsurance (e.g. 20%) on the other lines
+   - **paid = allowed − deductible − copay − coinsurance** (F-01, F-02); header totals = sum of lines (F-01)
+5. **Explanation codes.** Each paid line gets `CO-45` (billed − allowed, the provider's contractual write-off) and
+   `PR-1` / `PR-2` / `PR-3` (the member's deductible, coinsurance and copay). Member responsibility = sum of the PR
+   amounts (F-05). Denied lines pay zero and carry a `CO-<reason>` adjustment.
+6. **Dates in order.** Service → received (1–7 days) → adjudicated (1–5 days) → paid (T-02); nothing is dated after
+   `as_of_date`. A claim whose adjudication would fall after it stays `RECEIVED`.
+7. **Outcome.** 10% denied (category, CARC code, provider liable for CO), 5% pended with a reason. About 12% of
+   appealable denials are appealed; some appeals are overturned and **reprocessed into a replacement claim**
+   (frequency code 7) linked to the original, with a reprocessing record of paid-before and paid-after (R-07, F-06).
+8. **Totals derived, never invented.** Deductible-met and out-of-pocket-met are *sums* of the PR amounts on the
+   member's final paid claim versions (F-03).
+
+Every figure on the resulting explanation of benefits adds up, because each one is computed from the others rather
+than drawn independently.
+
+### 2.4 Randomness is controlled
+
+- Randomness picks *choices* (age, plan, procedure, denied or paid); the rules decide everything that follows from them.
+- Each draw is a pure function of (seed, entity, row number, what is being drawn). The same seed always gives the same
+  data, however the work is split across shards or machines; a new seed gives different rows with the same statistical
+  shape (§9).
+
+### 2.5 Scenarios are recipes layered on top
+
+- A **forced** scenario sets specific facts on its anchor rows: PCS-02 = pended, reason `RECORDS_REQUEST`, information
+  needed from the provider; MCI-02 = a code that requires authorization, no authorization, denied `CO-197`.
+- A **happy-path** scenario is not forced: its tag stays only on rows that naturally end in that state, so the
+  payload's denial rate stays honest.
+- Some scenarios break a rule on purpose (MCI-02 breaks R-03). Those rows are **exempted from that rule by their tag**;
+  the rule itself is never loosened. Deliberate dirty data works the same way (8% stale directory entries, 10% stale
+  schedules), each tagged so it is visible and exempt (§10).
+
+### 2.6 Then it checks itself independently
+
+s7 re-checks the result with separate SQL: 49 business rules, 58 foreign keys and a stamp check on every row. The SQL
+does not reuse generator code, so a generator bug is caught instead of repeated, and a single failure blocks the API
+Engine from deploying (§11).
+
+### 2.7 The 30-second version
+
+> We do not generate random rows and clean them up. We simulate the plan: plans and providers first, then members
+> enrolled in plans, then claims those members could really have, priced by their plan's rules, with authorizations
+> where the rules require them. Randomness only picks which realistic option happens; the rules guarantee every link
+> and every dollar adds up. Deliberate test stories are layered on top and tagged, and an independent rule engine
+> re-checks everything before anything is released.
+
+## 3. Scope
 
 **In scope:** reading and validating stage payloads; generating rows in dependency order; injecting scenario
 recipes; LLM text for knowledge assets through a content-addressed cache; loading serving tables, the claims
@@ -28,7 +116,7 @@ analytics mirror, documents and the vector index; rule validation, privacy scan 
 run-level orchestration such as approvals, cost guard and TTL (Orchestrator), creating cloud resources (Infra Engine,
 whose stage s2 output names the data stores), and serving the data to agents (API Engine).
 
-## 3. Context
+## 4. Context
 
 ```mermaid
 flowchart LR
@@ -45,9 +133,9 @@ flowchart LR
   DE -- "s7 manifest" --> API["API Engine s8"]
 ```
 
-## 4. Interface
+## 5. Interface
 
-### 4.1 Endpoints
+### 5.1 Endpoints
 
 | Method and path | Purpose |
 |---|---|
@@ -59,7 +147,7 @@ flowchart LR
 | `GET /factory/runs/{tenant}/analytics/claims-summary` | Claims analytics (BigQuery in the gcp profile) |
 | `DELETE /factory/runs/{tenant}` | Drop a run |
 
-### 4.2 Job payload (spec shape; extra fields allowed)
+### 5.2 Job payload (spec shape; extra fields allowed)
 
 | Field | Stages | Use |
 |---|---|---|
@@ -76,15 +164,15 @@ flowchart LR
 | `rules` | s3–s6 | rules to check at the end of the stage |
 | `llm` | s6 | informational; the profile decides the model |
 | `rule_sets`, `privacy_scan`, `consumes.from` | s7 | rule families, scan options, required stages |
-| `history_months`, `use_cases`, `tenant_id` | optional extensions | fill gaps in the spec payloads (§5.3) |
+| `history_months`, `use_cases`, `tenant_id` | optional extensions | fill gaps in the spec payloads (§6.3) |
 
-### 4.3 Stage result
+### 5.3 Stage result
 
 `status`, `duration_s`, `entities[] {entity, rows, checksum}`, `rule_checks {rule: PASS | FAIL | PASS_PARTIAL |
 DEFERRED_TO_S7 | NOT_CHECKED}`, `loaded_to`, `notes[]` (every accepted difference or derivation), `next_stage`.
 s7 adds `validation`, `failed_rules`, `privacy_scan`, `gate`, `manifest`, `manifest_uri`, `report_uri`, `entity_count`, `total_rows`.
 
-### 4.4 Errors
+### 5.4 Errors
 
 | HTTP | Codes |
 |---|---|
@@ -95,9 +183,9 @@ s7 adds `validation`, `failed_rules`, `privacy_scan`, `gate`, `manifest`, `manif
 
 A rejected payload changes nothing: the run spec is restored and a rejected first s3 leaves no run behind.
 
-## 5. Run model
+## 6. Run model
 
-### 5.1 RunSpec
+### 6.1 RunSpec
 
 There is no blueprint. A run is created by its s3 payload and extended by each later payload:
 
@@ -113,7 +201,7 @@ There is no blueprint. A run is created by its s3 payload and extended by each l
 | `use_cases` | s6 (payload or derived) |
 | `payload_hashes` | every stage; `data_spec_hash` = hash of s3–s6 payloads without `shards` |
 
-### 5.2 Ordering and idempotency
+### 6.2 Ordering and idempotency
 
 ```mermaid
 flowchart LR
@@ -124,7 +212,7 @@ The spec runs s6 in parallel with s4 after s3; v1 runs it after s5 because trans
 facility discharge claims (R-10) and knowledge links cover every denial code (R-11). Re-running any stage is
 idempotent (same checksums) and resets s7 and s8.
 
-### 5.3 Gaps in the spec payloads and how they are filled
+### 6.3 Gaps in the spec payloads and how they are filled
 
 | Stage | Missing | Derivation (reported in `notes`) | Optional override |
 |---|---|---|---|
@@ -134,7 +222,7 @@ idempotent (same checksums) and resets s7 and s8.
 | s5 | claims history window | `history_months = claims × 12 / (members × 6)` (D-05: 6 claims/member/year) | `history_months` |
 | s6 | use cases for FAQs and SOPs | prefixes of the run's scenario ids | `use_cases` |
 
-## 6. Stages
+## 7. Stages
 
 | Stage | Generates | Reads | Sharded | Notable logic |
 |---|---|---|---|---|
@@ -144,7 +232,7 @@ idempotent (same checksums) and resets s7 and s8.
 | s6 | care_case, transition_of_care, care_plan, disease_program_enrollment, risk_cohort, outreach_campaign, outreach_history, 6 knowledge entities | facility claims, members, plans | no | TOC from inpatient discharges (R-10, T-06); outreach consent and AI disclosure (C-07, A-04); LLM documents → chunks → embeddings → index |
 | s7 | — | everything | no | rules, privacy scan, manifest, quality gate |
 
-## 7. Data model rules every row follows
+## 8. Data model rules every row follows
 
 - Primary keys are `UUIDv5(dataset_id, entity, seed, row_key)`; human keys are derived from the anchor index
   (`MBR-0000042`, `CLM-0000042-03`, `AUTH-…`, `APL-…`).
@@ -152,7 +240,7 @@ idempotent (same checksums) and resets s7 and s8.
 - Money is `DECIMAL(14,2)` computed from integer cents; dates are `DATE`, instants `TIMESTAMP`; reserved formats for
   phones (555-01xx), emails (@example.test) and TINs (9xxxxxxxx) — P-02.
 
-## 8. Determinism and repeatability
+## 9. Determinism and repeatability
 
 | Mechanism | Guarantee |
 |---|---|
@@ -166,7 +254,7 @@ idempotent (same checksums) and resets s7 and s8.
 Tests prove: identical checksums for 1/3/5/7 shards, identical replay, prefix stability, re-seed changes rows but
 not shape, and a shard that fails half-way is retried with identical results.
 
-## 9. Scenario injection
+## 10. Scenario injection
 
 - Each scenario has an **anchor** (member, claim or auth) and a recipe. Anchor rows draw a scenario from the run's
   `scenario_mix` with their own RNG stream.
@@ -178,7 +266,7 @@ not shape, and a shard that fails half-way is retried with identical results.
 - Deliberate rule breaks are exempted **by tag** in the rule SQL (MCI-02 from R-03, PAP-04 from T-05, stale
   directory/schedule rows from T-07/T-07b), never by loosening the rule.
 
-## 10. Validation (s7)
+## 11. Validation (s7)
 
 - Families: R referential (15 incl. sub-rules), T temporal (13), F financial and code integrity (12), C regulatory (3),
   P privacy (4 + one P-01 per entity), A AI guardrails (2), plus 58 foreign keys. Rules whose tables a scenario does not
@@ -189,21 +277,21 @@ not shape, and a shard that fails half-way is retried with identical results.
 - Manifest: tenant, dataset, data-spec and payload hashes, seed, versions, per-entity counts and checksums, rule summary.
 - **Quality gate:** zero failed rules and privacy PASS, otherwise s8 is refused.
 
-## 11. Knowledge and LLM text (s6)
+## 12. Knowledge and LLM text (s6)
 
 Assets per run: benefit document and plan summary per plan, provider manual, PA policy per PA code, claims
 adjudication policy per denial category, FAQ library and agent SOP per use case. Text comes from the LLM port through
 the cache; chunks of ≤ 350 words are embedded as documents and upserted to the vector index with audience/type/LOB
 metadata. FAQ entries, agent SOPs, asset links (plans, CPT, denial codes, use cases) and a golden QA set are derived.
 
-## 12. Execution and scaling
+## 13. Execution and scaling
 
 - s4 and s5 split the member index range into `shards` tasks. The **executor port** runs them in-process with
   retries (`local`) or as one Cloud Run Job execution with `task_count = shards` (`cloud_run_job`); remote tasks run
   `factory task --stage s4 --tenant <id>`, read the RunSpec from the BlobStore and write partial counts/checksums back.
 - In-memory profiles cap a run at 60,000 members / 200,000 claims (about 1–1.5M rows); larger payloads get 413.
 
-## 13. Storage ports and adapters
+## 14. Storage ports and adapters
 
 | Port | memory profiles | gcp profile |
 |---|---|---|
@@ -217,7 +305,7 @@ metadata. FAQ entries, agent SOPs, asset links (plans, CPT, denial codes, use ca
 
 `FACTORY_PROFILE` is the only switch; a test fails if engine code imports a backend library or reads the environment.
 
-## 14. Failure handling
+## 15. Failure handling
 
 | Failure | Behaviour |
 |---|---|
@@ -227,18 +315,18 @@ metadata. FAQ entries, agent SOPs, asset links (plans, CPT, denial codes, use ca
 | Rule failure in s7 | gate red; s8 refused with the failing rules |
 | LLM transient errors | retried with backoff (408/429/5xx) |
 
-## 15. Decisions and trade-offs
+## 16. Decisions and trade-offs
 
 | Decision | Why | Cost |
 |---|---|---|
-| Payload-only engines, no blueprint | matches the stage contract; the Orchestrator owns the blueprint | gaps in spec payloads need derivations (§5.3) |
+| Payload-only engines, no blueprint | matches the stage contract; the Orchestrator owns the blueprint | gaps in spec payloads need derivations (§6.3) |
 | Rule-driven generation, no ML synthesizers | no real data to learn from; rules must hold exactly; determinism | realism limited to configured distributions |
 | Per-row seeded RNG | shard-independent, resumable, prefix-stable | draw order per row must stay stable across versions |
 | Rules enforced while generating and re-checked in s7 | generator bugs are caught (R-04 date gap was found this way) | rule logic exists twice |
 | s6 after s5 | care and knowledge links need claims | less parallelism than the spec |
 | One in-memory DuckDB per run locally | fast, no infrastructure | data lives as long as the server process |
 
-## 16. Known gaps and next steps
+## 17. Known gaps and next steps
 
 1. GCP adapters, Cloud Run Jobs executor and BigQuery mirror have not been run against a live project.
 2. Run state (RunSpec, stage results) lives in the control-plane process; persist it to the BlobStore to survive restarts.
