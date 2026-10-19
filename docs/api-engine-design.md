@@ -119,8 +119,9 @@ reports its HTTP status and error code; any failure blocks deployment.
 
 ## 8. Data access
 
-Handlers use a `Repository` over the `TableStore` port only, with SQL in the DuckDB/PostgreSQL common subset and
-`?` placeholders. Writes (`pcp_assignment`, `appeal_record`, `documentation_requirement`) upsert one row built with the
+Handlers contain no SQL: they call named methods of `Repository` (`api_engine/repository.py`), which is the only
+place the business API's SQL lives. It uses the `TableStore` port only, with SQL in the DuckDB/PostgreSQL common
+subset and `?` placeholders; coded values and limits are bound as parameters. Writes (`pcp_assignment`, `appeal_record`, `documentation_requirement`) upsert one row built with the
 table's own schema. Appointments are stored as JSON objects in the BlobStore (no appointment entity in the catalog).
 Knowledge search embeds the question as a query embedding and searches the `VectorIndex` with a tenant filter.
 

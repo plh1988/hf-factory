@@ -98,6 +98,12 @@ class Registry:
             return self.active
         raise JobRejected(RejectCode.STAGE_ORDER, "No run in progress. Start with POST /factory/data-engine/s3.")
 
+    def get(self, tenant: str) -> Run:
+        """The tenant's run, or a 404 NO_RUN rejection."""
+        if tenant not in self.runs:
+            raise JobRejected(RejectCode.NO_RUN, f"No run for tenant {tenant!r}. Start with POST /factory/data-engine/s3.")
+        return self.runs[tenant]
+
     def run_for(self, tenant: str, stage: str, job: DataJob | None = None) -> Run:
         """The tenant's run. s3 creates it (with namespaced stores) or, when it already exists, requires the same seed,
         as-of date, catalog version and id strategy; later stages need an existing run.

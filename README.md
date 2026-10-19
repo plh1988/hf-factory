@@ -163,6 +163,10 @@ Resource names come from the s2 output (`config/s2_output_gcp.example.json` list
 - **Rules (s7):** R/T/F/C/P/A families plus foreign keys, as portable SQL (about 90–120 apply per scenario).
 - **API engine:** one pre-built backend; the s8 payload switches endpoints on. OAuth2 client credentials, rate
   limit and fault injection from the payload; OpenAPI + agent tool manifest; four contract tests per endpoint.
+- **Code layout:** `control/` = app factory (`server.py`) plus routers per area (`data_engine_routes`,
+  `api_engine_routes`, `run_routes`) over an injected `Registry`; API handlers keep business logic only, with all SQL
+  in `api_engine/repository.py`; coded values in `codes.py`, error catalogs in `api_engine/errors.py` and
+  `control/errors.py`.
 
 ## Known gaps
 

@@ -57,7 +57,7 @@ def file_claim_appeal(claim_id: str, body: AppealRequest, request: Request, dry_
         raise error(ErrorCode.NOT_DENIED, f"Claim {claim_id} is {c['status']}; only denied claims can be appealed.")
     if not d["appealable"]:
         raise error(ErrorCode.NOT_APPEALABLE, f"Denial {d['carc']} ({d['denial_category']}) is not appealable; submit a corrected claim instead.")
-    existing = r.one("SELECT appeal_number, status FROM appeal_record WHERE claim_id = ? AND status <> 'DECIDED'", [c["claim_id"]])
+    existing = r.open_appeal(c["claim_id"])
     if existing:
         raise error(ErrorCode.APPEAL_EXISTS, f"Appeal {existing['appeal_number']} is already {existing['status']} for this claim.")
     if d["appeal_deadline_dt"] and today > d["appeal_deadline_dt"]:
@@ -99,16 +99,15 @@ class AppealStatus(Synthetic):
          description="For overturned appeals, shows whether the claim has been reprocessed and the replacement claim.")
 def get_appeal(appeal_id: str, request: Request, npi: str = NPI, tin: str = TIN, r: Repository = Depends(repo),
                _: str = Depends(require_client)) -> AppealStatus:
-    a = r.one("SELECT * FROM appeal_record WHERE appeal_number = ? OR appeal_id = ?", [appeal_id, appeal_id])
+    a = r.appeal(appeal_id)
     if a is None:
         raise error(ErrorCode.APPEAL_NOT_FOUND, f"No appeal {appeal_id}.")
-    c = r.one("SELECT * FROM claim_header WHERE claim_id = ?", [a["claim_id"]])
+    c = r.claim(a["claim_id"])
     verify_provider(r, npi, tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     late = a["filed_dt"] > a["deadline_dt"]
     rp = None
     if a["outcome"] == codes.AppealOutcome.OVERTURNED:
-        h = r.one("SELECT r.*, n.claim_number AS new_number FROM reprocessing_history r JOIN claim_header n ON n.claim_id = r.new_claim_id "
-                  "WHERE r.claim_id = ?", [a["claim_id"]]) if r.exists("reprocessing_history") else None
+        h = r.reprocessing(a["claim_id"])
         rp = ({"status": codes.ClaimStatus.REPROCESSED, "replacement_claim_id": h["new_number"], "reprocess_dt": h["reprocess_dt"],
                "paid_before": h["paid_before"], "paid_after": h["paid_after"]} if h else
               {"status": "AWAITING_REPROCESSING", "expected_by": a["decision_dt"] + timedelta(days=30)})
@@ -162,13 +161,8 @@ def get_claim_payments(claim_id: str, npi: str = NPI, tin: str = TIN, r: Reposit
         raise error(ErrorCode.CLAIM_NOT_FOUND, f"No claim {claim_id}.")
     verify_provider(r, npi, tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     billing_tin = r.provider(c["billing_npi"])["tin"]
-    ids = [c["claim_id"]]
-    if r.exists("reprocessing_history"):
-        ids += [x["new_claim_id"] for x in r.rows("SELECT new_claim_id FROM reprocessing_history WHERE claim_id = ?", [c["claim_id"]])]
-    pays = r.rows(f"SELECT p.*, h.claim_number FROM claim_payment p JOIN claim_header h ON h.claim_id = p.claim_id "
-                  f"WHERE p.claim_id IN ({', '.join('?' * len(ids))}) ORDER BY p.payment_dt", ids) if r.exists("claim_payment") else []
-    adj = r.rows("SELECT a.group_code, a.carc, sum(a.amount) AS amount FROM claim_adjustment a JOIN claim_line l ON l.line_id = a.line_id "
-                 "WHERE l.claim_id = ? GROUP BY 1, 2 ORDER BY 1, 2", [c["claim_id"]]) if r.exists("claim_adjustment") else []
+    pays = r.payments([c["claim_id"], *r.replacement_claim_ids(c["claim_id"])])
+    adj = r.adjustment_totals(c["claim_id"])
     co = sum(Decimal(str(a["amount"])) for a in adj if a["group_code"] == "CO")
     pr = sum(Decimal(str(a["amount"])) for a in adj if a["group_code"] == "PR")
     warnings, views = [], []
