@@ -13,7 +13,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from factory.api_engine.repository import Repository
-from factory.api_engine.security import error, require_client
+from factory import codes
+from factory.api_engine.errors import ErrorCode, error
+from factory.api_engine.security import require_client
 
 
 def repo(request: Request) -> Repository:
@@ -29,8 +31,7 @@ def verify_provider(r: Repository, npi: str, tin: str, allowed_npis: list[str | 
     """C-01 / PCS-04: the caller's NPI must be on the record and its TIN must match the TIN on file."""
     prov = r.provider(npi)
     if prov is None or prov["tin"] != tin or npi not in [x for x in allowed_npis if x]:
-        raise error(403, "VERIFICATION_FAILED",
-                    "NPI and TIN could not be verified for this record. Nothing can be disclosed. "
+        raise error(ErrorCode.VERIFICATION_FAILED, "NPI and TIN could not be verified for this record. Nothing can be disclosed. "
                     "Confirm the billing NPI and TIN on file, or use the provider portal.")
 
 
@@ -83,16 +84,16 @@ def get_claim_status(claim_id: str, npi: str = Query(..., min_length=10, max_len
                      r: Repository = Depends(repo), _: str = Depends(require_client)) -> ClaimStatus:
     c = r.claim(claim_id)
     if c is None:
-        raise error(404, "CLAIM_NOT_FOUND", f"No claim {claim_id}.")
+        raise error(ErrorCode.CLAIM_NOT_FOUND, f"No claim {claim_id}.")
     verify_provider(r, npi, tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     d = r.claim_detail(c["claim_id"])
     den, pend, pay = d["denial"], d["pend"], d["payment"]
-    if c["status"] == "PENDED" and pend:
+    if c["status"] == codes.ClaimStatus.PENDED and pend:
         step = f"Send the requested information ({pend['pend_reason'].replace('_', ' ').lower()}); expected resolution {pend['expected_resolution_dt']}."
-    elif c["status"] == "DENIED" and den:
-        step = ("Submit a corrected claim (frequency code 7) with the missing information." if den["denial_category"] == "MISSING_INFO"
+    elif c["status"] == codes.ClaimStatus.DENIED and den:
+        step = ("Submit a corrected claim (frequency code 7) with the missing information." if den["denial_category"] == codes.DenialCategory.MISSING_INFO
                 else f"Appeal by {den['appeal_deadline_dt']} if you disagree." if den["appealable"] else "Not appealable (duplicate).")
-    elif c["status"] == "PAID":
+    elif c["status"] == codes.ClaimStatus.PAID:
         step = "No action needed."
     else:
         step = "Claim is being processed; check again after adjudication."
@@ -156,14 +157,14 @@ def get_authorization_status(auth_id: str, npi: str = Query(..., min_length=10, 
                              r: Repository = Depends(repo), _: str = Depends(require_client)) -> AuthStatus:
     a = r.auth(auth_id)
     if a is None:
-        raise error(404, "AUTH_NOT_FOUND", f"No authorization {auth_id}.")
+        raise error(ErrorCode.AUTH_NOT_FOUND, f"No authorization {auth_id}.")
     verify_provider(r, npi, tin, [a["requesting_npi"], a["servicing_npi"], a["facility_npi"]])
     d = r.auth_detail(a["auth_id"])
     pending_docs = [x for x in d["documents"] if x["state"] in ("REQUIRED", "REQUESTED")]
     det = d["determination"]
     if pending_docs:
         step = f"Upload {', '.join(x['doc_type'].replace('_', ' ').lower() for x in pending_docs)}; the clock resumes on receipt."
-    elif det and det["outcome"] == "DENIED":
+    elif det and det["outcome"] == codes.AuthStatus.DENIED:
         step = "A peer-to-peer review or an appeal is available; appeal rights were sent with the determination."
     elif det:
         step = "No action needed."
@@ -199,12 +200,12 @@ def submit_authorization_document(auth_id: str, body: DocumentUpload, r: Reposit
                                   _: str = Depends(require_client)) -> DocumentAccepted:
     a = r.auth(auth_id)
     if a is None:
-        raise error(404, "AUTH_NOT_FOUND", f"No authorization {auth_id}.")
+        raise error(ErrorCode.AUTH_NOT_FOUND, f"No authorization {auth_id}.")
     verify_provider(r, body.npi, body.tin, [a["requesting_npi"], a["servicing_npi"], a["facility_npi"]])
     req = next((x for x in r.auth_detail(a["auth_id"])["documents"]
                 if x["doc_type"] == body.doc_type and x["state"] in ("REQUIRED", "REQUESTED")), None)
     if req is None:
-        raise error(409, "DOCUMENT_NOT_REQUESTED", f"No outstanding request for {body.doc_type} on {auth_id}.")
+        raise error(ErrorCode.DOCUMENT_NOT_REQUESTED, f"No outstanding request for {body.doc_type} on {auth_id}.")
     r.receive_document(req["req_id"])
     return DocumentAccepted(auth_id=a["auth_number"], doc_type=body.doc_type, state="RECEIVED", clock_resumed=True,
                             message="Document received. The decision clock has resumed.", scenario_id=a["scenario_id"])
@@ -259,16 +260,16 @@ class Eligibility(Synthetic):
 def verify_eligibility(body: EligibilityRequest, request: Request, r: Repository = Depends(repo),
                        client: str = Depends(require_client)) -> Eligibility:
     prov = r.provider(body.npi)
-    if prov is None or prov["tin"] != body.tin or prov["status"] != "ACTIVE":
-        raise error(403, "VERIFICATION_FAILED", "NPI and TIN could not be verified.")
+    if prov is None or prov["tin"] != body.tin or prov["status"] != codes.ProviderStatus.ACTIVE:
+        raise error(ErrorCode.VERIFICATION_FAILED, "NPI and TIN could not be verified.")
     if body.member_id:
         m = r.member(body.member_id)
     elif body.first_name and body.last_name and body.dob:
         m = r.member_by_demographics(body.first_name, body.last_name, body.dob)
     else:
-        raise error(422, "MEMBER_IDENTIFIERS_REQUIRED", "Send member_id, or first_name + last_name + dob.")
+        raise error(ErrorCode.MEMBER_IDENTIFIERS_REQUIRED, "Send member_id, or first_name + last_name + dob.")
     if m is None:
-        raise error(404, "MEMBER_NOT_FOUND", "No member matches the identifiers given.")
+        raise error(ErrorCode.MEMBER_NOT_FOUND, "No member matches the identifiers given.")
 
     # PEV-04: minimum necessary - cap distinct members per client in a 5-minute window
     lookups: dict[str, deque] = request.app.state.lookups
@@ -277,7 +278,7 @@ def verify_eligibility(body: EligibilityRequest, request: Request, r: Repository
         q.popleft()
     seen = {mid for _, mid in q}
     if m["member_id"] not in seen and len(seen) >= MAX_DISTINCT_MEMBERS_PER_5_MIN:
-        raise error(429, "MINIMUM_NECESSARY", "Too many different members looked up in a short time. "
+        raise error(ErrorCode.MINIMUM_NECESSARY, "Too many different members looked up in a short time. "
                     "Use the batch 270/271 EDI process for bulk eligibility.")
     q.append((now, m["member_id"]))
 
@@ -289,14 +290,14 @@ def verify_eligibility(body: EligibilityRequest, request: Request, r: Repository
         return Eligibility(reference_number=ref, member_id=m["member_number"], eligible=False,
                            enrollment_status=latest and latest["status"],
                            warnings=["No coverage on the date of service."], scenario_id=m["scenario_id"])
-    if e["retro_change_flag"] and e["status"] == "TERMED":
+    if e["retro_change_flag"] and e["status"] == codes.EnrollmentStatus.TERMED:
         warnings.append(f"Coverage was terminated retroactively effective {e['term_dt']}. Eligibility may change.")
-    if e["status"] == "PENDING":
+    if e["status"] == codes.EnrollmentStatus.PENDING:
         warnings.append("Enrollment is pending; coverage is retroactive to the application date once confirmed.")
     pcp = r.pcp_on(m["member_id"], body.date_of_service)
     acc = r.accumulator(m["member_id"], body.date_of_service.year) or {"deductible_met": Decimal("0.00"), "oop_met": Decimal("0.00")}
     return Eligibility(
-        reference_number=ref, member_id=m["member_number"], eligible=e["status"] in ("ACTIVE", "PENDING", "TERMED"),
+        reference_number=ref, member_id=m["member_number"], eligible=e["status"] in (codes.EnrollmentStatus.ACTIVE, codes.EnrollmentStatus.PENDING, codes.EnrollmentStatus.TERMED),
         enrollment_status=e["status"], plan_code=e["plan_code"], plan_name=e["plan_name"], lob=e["lob"],
         coverage_effective_dt=e["effective_dt"], coverage_term_dt=e["term_dt"],
         pcp={"npi": pcp["pcp_npi"], "name": f"{pcp['first_name']} {pcp['last_name']}", "specialty": pcp["specialty"]} if pcp else None,
@@ -333,7 +334,7 @@ def verify_identity(body: IdentityRequest, r: Repository = Depends(repo), _: str
     matched: list[str] = []
     if body.caller_type == "PROVIDER":
         p = r.provider(body.npi or "")
-        if p and p["status"] == "ACTIVE":
+        if p and p["status"] == codes.ProviderStatus.ACTIVE:
             matched.append("NPI")
             if p["tin"] == body.tin:
                 matched.append("TIN")

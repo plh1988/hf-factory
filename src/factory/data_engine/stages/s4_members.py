@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pyarrow as pa
 
+from factory.codes import EnrollmentStatus, GeoType, Lob, PcpAssignmentStatus
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext, dates
 from factory.data_engine.rng import RowRandom
@@ -68,7 +69,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     n = len(idx)
     rr = ctx.rr("member_demographics", idx)  # one random stream per member; every draw below is keyed by its name
     dist = ctx.spec.distributions
-    lob_mix = dist.get("lob_mix", {"COMMERCIAL": 1})
+    lob_mix = dist.get("lob_mix", {Lob.COMMERCIAL: 1})
     lob = rr.choice("lob", list(lob_mix), list(lob_mix.values()))
     plan_id = pick(plans_by_lob, lob, rr.u("plan"))
     scen = ctx.scenarios("member", rr)
@@ -91,8 +92,8 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
         geo = rr.choice("geo", list(geo_mix), list(geo_mix.values()))
     else:
         geo = np.array([catalog.PLACES[i][5] for i in rr.integers("geo_place", 0, len(catalog.PLACES))], dtype=object)
-    geo = np.where(scen == "MPS-02", "RURAL", geo)
-    by_geo = {g: [i for i, pl in enumerate(catalog.PLACES) if pl[5] == g] for g in ("URBAN", "SUBURBAN", "RURAL")}
+    geo = np.where(scen == "MPS-02", GeoType.RURAL, geo)
+    by_geo = {g: [i for i, pl in enumerate(catalog.PLACES) if pl[5] == g] for g in (GeoType.URBAN, GeoType.SUBURBAN, GeoType.RURAL)}
     u_place = rr.u("place")
     place_idx = np.array([by_geo[g][min(int(u * len(by_geo[g])), len(by_geo[g]) - 1)] for g, u in zip(geo, u_place)], dtype=np.int64)
     places = [catalog.PLACES[p] for p in place_idx]
@@ -101,8 +102,8 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     lang = np.where(scen == "MPS-02", "ES", lang)
     channel = rr.choice("channel", ["VOICE", "CHAT", "SMS"], [55, 30, 15])
     needs = [[a for a, f in (("HEARING", h), ("LARGE_PRINT", v), ("INTERPRETER", i)) if f] for h, v, i in
-             zip(rr.bernoulli("hearing", np.where(lob == "MEDICARE_ADV", 0.15, 0.03)),
-                 rr.bernoulli("vision", np.where(lob == "MEDICARE_ADV", 0.10, 0.02)),
+             zip(rr.bernoulli("hearing", np.where(lob == Lob.MEDICARE_ADV, 0.15, 0.03)),
+                 rr.bernoulli("vision", np.where(lob == Lob.MEDICARE_ADV, 0.10, 0.02)),
                  (lang != "EN") & rr.bernoulli("interp", 0.5))]
     member_no = [f"MBR-{i + 1:07d}" for i in idx]
     last4 = rr.integers("last4", 0, 10000)
@@ -139,18 +140,18 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     # enrollments start at least 12 months back, so any claims window up to 12 months is covered
     hist_start = ctx.as_of - np.timedelta64(ENROLLMENT_LOOKBACK_MONTHS * 31, "D")
     eff = month_start(hist_start - rr.integers("enroll_back", 0, 900).astype("timedelta64[D]"))
-    status = np.full(n, "ACTIVE", dtype=object)
+    status = np.full(n, EnrollmentStatus.ACTIVE, dtype=object)
     term = np.full(n, np.datetime64("NaT", "D"), dtype="datetime64[D]")
     retro = np.zeros(n, dtype=bool)
     base_termed = (scen == "BASE") | (scen == "PEV-01")
     past_term = base_termed & rr.bernoulli("termed", 0.02)
-    status[past_term] = "TERMED"
+    status[past_term] = EnrollmentStatus.TERMED
     term[past_term] = ctx.as_of - rr.integers("term_back", 10, 40)[past_term].astype("timedelta64[D]")
     m2 = scen == "PEV-02"  # termed retroactively: term date yesterday
-    status[m2], term[m2], retro[m2] = "TERMED", ctx.as_of - DAY, True
+    status[m2], term[m2], retro[m2] = EnrollmentStatus.TERMED, ctx.as_of - DAY, True
     m3 = scen == "PEV-03"  # enrollment pending, retro to application
-    status[m3], eff[m3], retro[m3] = "PENDING", month_start(ctx.as_of - 20 * DAY), True
-    premium = np.where(lob == "MEDICAID_MCO", "NA", rr.choice("premium", ["PAID", "DUE", "PAST_DUE"], [92, 5, 3]))
+    status[m3], eff[m3], retro[m3] = EnrollmentStatus.PENDING, month_start(ctx.as_of - 20 * DAY), True
+    premium = np.where(lob == Lob.MEDICAID_MCO, "NA", rr.choice("premium", ["PAID", "DUE", "PAST_DUE"], [92, 5, 3]))
     prior = rr.bernoulli("prior_span", 0.15)
     p_idx = idx[prior]
     p_eff = month_start(eff[prior] - rr.integers("prior_len", 365, 730)[prior].astype("timedelta64[D]"))
@@ -160,7 +161,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
         "plan_id": pa.array(np.concatenate([plan_id, plan_id[prior]]).tolist()),
         "effective_dt": dates(np.concatenate([eff, p_eff])),
         "term_dt": dates(np.concatenate([term, eff[prior] - DAY])),
-        "status": pa.array(np.concatenate([status, np.full(len(p_idx), "TERMED", dtype=object)]).tolist()),
+        "status": pa.array(np.concatenate([status, np.full(len(p_idx), EnrollmentStatus.TERMED, dtype=object)]).tolist()),
         "premium_status": pa.array(np.concatenate([premium, premium[prior]]).tolist()),
         "cob_flag": pa.array(np.concatenate([rr.bernoulli("cob", 0.05), np.zeros(len(p_idx), bool)])),
         "retro_change_flag": pa.array(np.concatenate([retro, np.zeros(len(p_idx), bool)])),
@@ -171,7 +172,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
         pcp = pick(pcps, plan_id, rr.u("pcp"))
         has = pcp != None  # noqa: E711 - object array comparison
         span_end = np.where(np.isnat(term), ctx.as_of, term)
-        a_status = np.where(np.isnat(term), "ACTIVE", "ENDED")
+        a_status = np.where(np.isnat(term), PcpAssignmentStatus.ACTIVE, PcpAssignmentStatus.ENDED)
         forced_switch = np.isin(scen, ["MPC-02", "MPC-03"])
         switch = has & (rr.bernoulli("pcp_switch", 0.2) | forced_switch) & ((span_end - eff) > 2 * DAY)
         sw_dt = eff + np.floor(rr.u("switch_at") * ((span_end - eff).astype(int) - 1)).astype("timedelta64[D]") + DAY
@@ -189,7 +190,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
             "assignment_type": pa.array(np.concatenate([np.where(scen == "MPC-02", "AUTO_ASSIGNED",
                                                                  rr.choice("atype", ["MEMBER_SELECTED", "AUTO_ASSIGNED"], [70, 30]))[keep],
                                                         np.full(sk.sum(), "MEMBER_SELECTED", dtype=object)]).tolist()),
-            "status": pa.array(np.concatenate([a_status[keep], np.full(sk.sum(), "ENDED", dtype=object)]).tolist()),
+            "status": pa.array(np.concatenate([a_status[keep], np.full(sk.sum(), PcpAssignmentStatus.ENDED, dtype=object)]).tolist()),
             "change_reason": pa.array(np.concatenate([np.full(keep.sum(), None, dtype=object),
                                                       np.where(scen == "MPC-02", "PROVIDER_TERMED", np.where(scen == "MPC-03", "MOVED",
                                                                rr.choice("reason", ["MOVED", "PROVIDER_TERMED", "PREFERENCE", "ACCESS"])))[sk]]).tolist(), pa.string()),
@@ -197,7 +198,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
 
     # ---- risk scores: HCC RAF + LACE per member
     if ctx.wants("risk_score"):
-        median = np.where(lob == "MEDICARE_ADV", 1.0, 0.6)  # per row, never per shard
+        median = np.where(lob == Lob.MEDICARE_ADV, 1.0, 0.6)  # per row, never per shard
         raf = np.round(np.clip(median * np.exp(rr.normal("raf", 0.0, 0.55)), 0.1, 5.0), 3)
         lace = rr.integers("lace", 0, 20).astype(float)
         tier = np.where(raf < 1.0, "LOW", np.where(raf < 2.0, "RISING", "HIGH"))
@@ -236,7 +237,7 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, plans_by_lob: dict, pcps: dict)
     if ctx.wants("sdoh_indicator"):
         transport = np.isin(scen, ["MBN-03", "MAS-02"])
         s = rr.bernoulli("screened", 0.6) | transport
-        pos_rate = np.where(lob == "MEDICAID_MCO", 0.40, 0.18)
+        pos_rate = np.where(lob == Lob.MEDICAID_MCO, 0.40, 0.18)
         domain = np.where(transport, "TRANSPORT", rr.choice("sdoh_domain", ["FOOD", "HOUSING", "TRANSPORT", "UTILITIES", "SAFETY", "ISOLATION"]))
         positive = rr.bernoulli("sdoh_pos", pos_rate) | transport
         ctx.write("sdoh_indicator", {

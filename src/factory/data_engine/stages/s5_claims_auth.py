@@ -10,10 +10,14 @@ from __future__ import annotations
 import numpy as np
 import pyarrow as pa
 
-from factory.data_engine import catalog
+from factory.codes import (
+    AppealOutcome, AppealStatus, AuthLineStatus, AuthStatus, ClaimStatus, ClaimType, DenialCategory,
+    FacilityType, Lob, NetworkStatus, ProviderRole, ProviderType, ServiceType,
+)
+from factory.data_engine import catalog, keys
 from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.knowledge_catalog import pa_policy_asset_id
-from factory.data_engine.rng import RowRandom, money
+from factory.data_engine.rng import money
 
 DAY = np.timedelta64(1, "D")
 HOUR = np.timedelta64(1, "h")
@@ -56,9 +60,9 @@ def load_inputs(ctx: GenContext) -> dict:
     pcp = q("SELECT member_id, pcp_npi FROM pcp_assignment WHERE status = 'ACTIVE'") if ctx.stores.tables.exists("pcp_assignment") else None
 
     def role(ptype: str, ftype: str | None) -> str:
-        if ptype in ("PCP", "SPECIALIST"):
+        if ptype in (ProviderType.PCP, ProviderType.SPECIALIST):
             return ptype
-        return {"PHARMACY": "PHARMACY", "HOSPITAL": "HOSPITAL"}.get(ftype or "", "POSTACUTE")
+        return {FacilityType.PHARMACY: ProviderRole.PHARMACY, FacilityType.HOSPITAL: ProviderRole.HOSPITAL}.get(ftype or "", ProviderRole.POSTACUTE)
 
     pools: dict[str, list[str]] = {}
     for plan_id, npi, pt, ft in zip(*(prov[c].to_pylist() for c in ["plan_id", "npi", "provider_type", "facility_type"])):
@@ -87,7 +91,7 @@ def pick_provider(inp: dict, plan_ids: np.ndarray, role: str, in_network: np.nda
         pool = inp["pools"].get(f"{plan}|{role}") if inn else None
         actual[i] = bool(pool)
         if not pool:
-            pool = inp["oon"].get(role) or inp["oon"]["PCP"]
+            pool = inp["oon"].get(role) or inp["oon"][ProviderRole.PCP]
         out[i] = pool[min(int(x * len(pool)), len(pool) - 1)]
     return (out, actual) if with_network else out
 
@@ -126,15 +130,15 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     # ---- claims: expand members into claim rows (ci = member position, cj = claim number for that member)
     ci = np.repeat(np.arange(len(midx)), k)
     cj = np.concatenate([np.arange(c) for c in k]) if len(ci) else np.array([], np.int64)
-    ckey = midx[ci] * 64 + cj  # stable claim key: member index * 64 + claim number (< 20; 32+ is used for replacements)
+    ckey = keys.claim_key(midx[ci], cj)  # stable per member and claim number (see keys.py)
     n = len(ckey)
     crr = ctx.rr("claim_header", ckey)
     scen = ctx.scenarios("claim", crr)
-    ctype = crr.choice("type", ["PHARMACY", "PROFESSIONAL", "FACILITY"], [40, 45, 15])
+    ctype = crr.choice("type", [ClaimType.PHARMACY, ClaimType.PROFESSIONAL, ClaimType.FACILITY], [40, 45, 15])
     # forced scenarios (e.g. PCS-02, MCI-02, PAP-02) need a clean professional, in-network, non-emergency claim
     forced = np.isin(scen, sorted(catalog.FORCED_CLAIM_SCENARIOS))
-    ctype = np.where(forced, "PROFESSIONAL", ctype)
-    inpatient = (ctype == "FACILITY") & crr.bernoulli("inpatient", 0.6)
+    ctype = np.where(forced, ClaimType.PROFESSIONAL, ctype)
+    inpatient = (ctype == ClaimType.FACILITY) & crr.bernoulli("inpatient", 0.6)
     los = np.where(inpatient, crr.integers("los", 2, 7), 0)
     los = np.minimum(los, np.maximum(span[ci], 0))
     s_from = w_start[ci] + np.floor(crr.u("dos") * (span[ci] - los + 1)).astype("timedelta64[D]")
@@ -145,31 +149,31 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     received = np.minimum(s_to + crr.integers("recv_lag", 1, 8).astype("timedelta64[D]"), ctx.as_of)
     adjud = received + crr.integers("adj_lag", 1, 6).astype("timedelta64[D]")
     in_process = adjud > ctx.as_of
-    emergency = np.where(ctype == "FACILITY", inpatient & crr.bernoulli("er", 0.35), (ctype == "PROFESSIONAL") & crr.bernoulli("er_p", 0.05))
+    emergency = np.where(ctype == ClaimType.FACILITY, inpatient & crr.bernoulli("er", 0.35), (ctype == ClaimType.PROFESSIONAL) & crr.bernoulli("er_p", 0.05))
     emergency &= ~forced
 
     # ---- providers: 92% in network; pick_provider reports the truth if the plan has no participating provider (R-04)
     plan_ids = m["plan_id"][ci]
     in_net = crr.bernoulli("in_network", 0.92) | forced
-    role = np.where(ctype == "PHARMACY", "PHARMACY", np.where(ctype == "FACILITY",
-                    np.where(inpatient, "HOSPITAL", "POSTACUTE"), crr.choice("prof_role", ["PCP", "SPECIALIST"], [60, 40])))
+    role = np.where(ctype == ClaimType.PHARMACY, ProviderRole.PHARMACY, np.where(ctype == ClaimType.FACILITY,
+                    np.where(inpatient, ProviderRole.HOSPITAL, ProviderRole.POSTACUTE), crr.choice("prof_role", [ProviderRole.PCP, ProviderRole.SPECIALIST], [60, 40])))
     billing = np.empty(n, dtype=object)
     for r in np.unique(role) if n else []:
         mask = role == r
         billing[mask], in_net[mask] = pick_provider(inp, plan_ids[mask], r, in_net[mask], crr.u(f"billing:{r}")[mask],
                                                     with_network=True)
-    rendering = np.where(ctype == "PROFESSIONAL", billing, None)
+    rendering = np.where(ctype == ClaimType.PROFESSIONAL, billing, None)
     rendering = np.where(scen == "PCS-03", None, rendering)  # CO-16: missing rendering NPI
-    facility = np.where(ctype == "FACILITY", billing, None)
-    attending = pick_provider(inp, plan_ids, "SPECIALIST", in_net, crr.u("attending"))
-    rendering = np.where(ctype == "FACILITY", attending, rendering)
-    network = np.where(in_net, "IN", np.where(emergency, "OON_EMERGENCY", "OON"))
+    facility = np.where(ctype == ClaimType.FACILITY, billing, None)
+    attending = pick_provider(inp, plan_ids, ProviderRole.SPECIALIST, in_net, crr.u("attending"))
+    rendering = np.where(ctype == ClaimType.FACILITY, attending, rendering)
+    network = np.where(in_net, NetworkStatus.IN, np.where(emergency, NetworkStatus.OON_EMERGENCY, NetworkStatus.OON))
 
     # status: scenario recipes first, then baseline denial/pend rates
     denial_rate = float(ctx.spec.distributions.get("denial_rate", 0.10))
-    deny = (ctype != "PHARMACY") & crr.bernoulli("deny", denial_rate)
+    deny = (ctype != ClaimType.PHARMACY) & crr.bernoulli("deny", denial_rate)
     pend = crr.bernoulli("pend", 0.05)
-    status = np.where(deny, "DENIED", np.where(pend, "PENDED", "PAID")).astype(object)
+    status = np.where(deny, ClaimStatus.DENIED, np.where(pend, ClaimStatus.PENDED, ClaimStatus.PAID)).astype(object)
     denial_cat = crr.choice("denial_cat", *catalog.BASELINE_DENIALS).astype(object)
     pend_reason = np.full(n, None, dtype=object)
     for sid in catalog.FORCED_CLAIM_SCENARIOS:  # scenario recipes override the baseline draws
@@ -182,33 +186,33 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
             denial_cat[mask] = recipe["denial_category"]
         if "pend_reason" in recipe:
             pend_reason[mask] = recipe["pend_reason"]
-    status[in_process] = "RECEIVED"
+    status[in_process] = ClaimStatus.RECEIVED
     required = np.array([catalog.SCENARIOS[x]["claim_status"] if x in catalog.HAPPY_CLAIM_SCENARIOS else "" for x in scen], dtype=object)
     # happy-path tags are not forced: they stay only on claims that ended in the recipe's status (keeps the denial rate)
     happy_unmet = np.isin(scen, sorted(catalog.HAPPY_CLAIM_SCENARIOS)) & (status != required)
-    happy_unmet |= (scen == "PAP-01") & (np.isin(denial_cat, ["DUPLICATE", "AUTH"]) | (ctype == "PHARMACY"))
+    happy_unmet |= (scen == "PAP-01") & (np.isin(denial_cat, [DenialCategory.DUPLICATE, DenialCategory.AUTH]) | (ctype == ClaimType.PHARMACY))
     scen = np.where(in_process | happy_unmet, "BASE", scen)
     edge = forced & ~in_process
-    paid_dt = np.where(status == "PAID", np.minimum(adjud + crr.integers("pay_lag", 1, 6).astype("timedelta64[D]"), ctx.as_of), NAT)
-    adjud = np.where(np.isin(status, ["PAID", "DENIED"]), adjud, NAT)
+    paid_dt = np.where(status == ClaimStatus.PAID, np.minimum(adjud + crr.integers("pay_lag", 1, 6).astype("timedelta64[D]"), ctx.as_of), NAT)
+    adjud = np.where(np.isin(status, [ClaimStatus.PAID, ClaimStatus.DENIED]), adjud, NAT)
 
     # ---- lines
-    n_lines = np.where(ctype == "PHARMACY", 1, np.where(ctype == "FACILITY",
+    n_lines = np.where(ctype == ClaimType.PHARMACY, 1, np.where(ctype == ClaimType.FACILITY,
                        np.minimum(2 + crr.poisson("n_fac_lines", 1.5), 6), np.minimum(1 + crr.poisson("n_prof_lines", 1.3), 4)))
     li = np.repeat(np.arange(n), n_lines)
     ln = np.concatenate([np.arange(c) for c in n_lines]) if n else np.array([], np.int64)
-    lkey = ckey[li] * 8 + ln  # stable line key: claim key * 8 + line number
+    lkey = keys.line_key(ckey[li], ln)
     lrr = ctx.rr("claim_line", lkey)
-    needs_pa_prof = (ctype == "PROFESSIONAL") & ~edge & ~emergency & crr.bernoulli("pa_prof", 0.06)
+    needs_pa_prof = (ctype == ClaimType.PROFESSIONAL) & ~edge & ~emergency & crr.bernoulli("pa_prof", 0.06)
     needs_pa_fac = inpatient & ~emergency & crr.bernoulli("pa_fac", 0.25)
     cpt = np.empty(len(li), dtype=object)
     lt = ctype[li]
     first = ln == 0
-    cpt[(lt == "PROFESSIONAL") & first] = lrr.choice("office", OFFICE)[(lt == "PROFESSIONAL") & first]
-    cpt[(lt == "PROFESSIONAL") & ~first] = lrr.choice("ancillary", ANCILLARY)[(lt == "PROFESSIONAL") & ~first]
+    cpt[(lt == ClaimType.PROFESSIONAL) & first] = lrr.choice("office", OFFICE)[(lt == ClaimType.PROFESSIONAL) & first]
+    cpt[(lt == ClaimType.PROFESSIONAL) & ~first] = lrr.choice("ancillary", ANCILLARY)[(lt == ClaimType.PROFESSIONAL) & ~first]
     pa_line = first & (needs_pa_prof[li] | (scen[li] == "MCI-02"))  # MCI-02: PA code billed without an auth
     cpt[pa_line] = lrr.choice("pa_code", PROF_PA)[pa_line]
-    fac = lt == "FACILITY"
+    fac = lt == ClaimType.FACILITY
     cpt[fac] = lrr.choice("inpatient", INPATIENT)[fac]
     cpt[fac & first & inpatient[li]] = "99223"
     cpt[fac & (ln == 1) & inpatient[li]] = "99238"
@@ -217,7 +221,7 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     units[cpt == "99232"] = np.maximum(los[li][cpt == "99232"] - 1, 1)
 
     # pharmacy detail inputs
-    ph = np.where(ctype == "PHARMACY")[0]
+    ph = np.where(ctype == ClaimType.PHARMACY)[0]
     drug_i = crr.integers("drug", 0, len(DRUGS_NO_PA))
     tier = np.array([DRUGS_NO_PA[d][2] for d in drug_i], dtype=np.int64)
 
@@ -225,10 +229,10 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     # billed = allowed x 1.4-2.6 markup; denied or pended lines get allowed = paid = 0
     rate_cents = np.array([CPT[c][2] * 100 if c else 0 for c in cpt], dtype=np.int64) * units
     drug_cents = np.round(np.array([DRUG_MEDIAN_CENTS[t] for t in tier]) * np.exp(crr.normal("drug_cost", 0, 0.3))).astype(np.int64)
-    allowed_full = np.where(lt == "PHARMACY", drug_cents[li], np.where(network[li] == "IN", rate_cents, (rate_cents * 0.8).astype(np.int64)))
-    billed = np.round(allowed_full * np.where(lt == "PHARMACY", 1.1, 1.4 + lrr.u("markup") * 1.2)).astype(np.int64)
+    allowed_full = np.where(lt == ClaimType.PHARMACY, drug_cents[li], np.where(network[li] == NetworkStatus.IN, rate_cents, (rate_cents * 0.8).astype(np.int64)))
+    billed = np.round(allowed_full * np.where(lt == ClaimType.PHARMACY, 1.1, 1.4 + lrr.u("markup") * 1.2)).astype(np.int64)
 
-    paid_line = status[li] == "PAID"
+    paid_line = status[li] == ClaimStatus.PAID
     allowed = np.where(paid_line, allowed_full, 0)
 
     # member liability: deductible on the member's first claim only, copay on line 0 (prof/pharmacy), coinsurance otherwise
@@ -239,18 +243,18 @@ def gen_claims(ctx: GenContext, inp: dict, sl: slice) -> dict:
     ded = np.zeros(len(li), np.int64)
     ded_line = first & (cj[li] == 0) & paid_line
     ded[ded_line] = np.minimum(allowed[ded_line], deductible_c[li][ded_line])
-    is_pcp = np.array([inp["ptype"].get(b) == "PCP" for b in billing], dtype=bool) if n else np.zeros(0, bool)
-    copay_amt = np.where(ctype == "PHARMACY", np.array([catalog.TIER_COPAY_USD[t] * 100 for t in tier], dtype=np.int64),
+    is_pcp = np.array([inp["ptype"].get(b) == ProviderType.PCP for b in billing], dtype=bool) if n else np.zeros(0, bool)
+    copay_amt = np.where(ctype == ClaimType.PHARMACY, np.array([catalog.TIER_COPAY_USD[t] * 100 for t in tier], dtype=np.int64),
                          np.where(is_pcp, copay_pcp_c, copay_spec_c))
     copay = np.zeros(len(li), np.int64)
-    cp_line = first & paid_line & np.isin(lt, ["PROFESSIONAL", "PHARMACY"])
+    cp_line = first & paid_line & np.isin(lt, [ClaimType.PROFESSIONAL, ClaimType.PHARMACY])
     copay[cp_line] = np.minimum(allowed[cp_line] - ded[cp_line], copay_amt[li][cp_line])
     coins = np.zeros(len(li), np.int64)
     co_line = paid_line & ~cp_line
     coins[co_line] = ((allowed[co_line] - ded[co_line]) * coins_pct[li][co_line]) // 100
     paid = allowed - ded - copay - coins  # F-02; member responsibility = ded + copay + coins (the PR adjustments)
 
-    line_status = np.where(status[li] == "PAID", "PAID", np.where(status[li] == "DENIED", "DENIED", "PENDED"))
+    line_status = np.where(status[li] == ClaimStatus.PAID, ClaimStatus.PAID, np.where(status[li] == ClaimStatus.DENIED, ClaimStatus.DENIED, ClaimStatus.PENDED))
 
     def per_claim(x: np.ndarray) -> np.ndarray:
         return np.bincount(li, weights=x, minlength=n).astype(np.int64)
@@ -281,19 +285,19 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     sj = np.concatenate([np.arange(x) for x in k]) if len(si) else np.array([], np.int64)
 
     a_member = np.concatenate([c["ci"][lk], si])
-    a_key = np.concatenate([c["ckey"][lk], midx[si] * 64 + 32 + sj])  # standalone auths use member*64 + 32 + j
+    a_key = np.concatenate([c["ckey"][lk], keys.standalone_auth_key(midx[si], sj)])  # claim-linked auths reuse the claim key
     linked = np.concatenate([np.ones(len(lk), bool), np.zeros(len(si), bool)])
     n = len(a_key)
     arr = ctx.rr("auth_request", a_key)
     scen = np.where(linked, "BASE", ctx.scenarios("auth", arr)).astype(object)
     # happy path PAS-01 = a routine standard review; other baseline rows keep the D-06 outcome mix
     outcome = arr.choice("outcome", *catalog.AUTH_OUTCOMES).astype(object)
-    scen[(scen == "PAS-01") & (outcome != "IN_REVIEW")] = "BASE"
+    scen[(scen == "PAS-01") & (outcome != AuthStatus.IN_REVIEW)] = "BASE"
 
-    stype = arr.choice("stype", ["OUTPATIENT", "INPATIENT", "DME", "HOME_HEALTH", "SNF", "PHARMACY", "BH"], [45, 10, 10, 10, 10, 10, 5]).astype(object)
-    stype[linked] = np.where(c["ctype"][lk] == "FACILITY", "INPATIENT", "OUTPATIENT")
-    stype[scen == "PAS-02"] = "SNF"
-    stype[scen == "PAS-03"] = "OUTPATIENT"
+    stype = arr.choice("stype", [ServiceType.OUTPATIENT, ServiceType.INPATIENT, ServiceType.DME, ServiceType.HOME_HEALTH, ServiceType.SNF, ServiceType.PHARMACY, ServiceType.BH], [45, 10, 10, 10, 10, 10, 5]).astype(object)
+    stype[linked] = np.where(c["ctype"][lk] == ClaimType.FACILITY, ServiceType.INPATIENT, ServiceType.OUTPATIENT)
+    stype[scen == "PAS-02"] = ServiceType.SNF
+    stype[scen == "PAS-03"] = ServiceType.OUTPATIENT
     urgent = arr.bernoulli("urgent", 0.15) & ~linked
     urgent[scen == "PAS-02"] = True
     urgent[np.isin(scen, ["PAS-01", "PAS-03"])] = False
@@ -306,18 +310,18 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     received = recv_day.astype("datetime64[s]") + (8 + arr.integers("recv_hour", 0, 9)).astype("timedelta64[h]")
     due = received + np.where(urgent, 72, 7 * 24).astype("timedelta64[h]")
 
-    outcome[linked] = "APPROVED"
-    outcome[np.isin(scen, ["PAS-02", "PAS-03"])] = "PENDED_INFO"
-    outcome[scen == "PAS-04"] = "DENIED"
-    decided = np.isin(outcome, ["APPROVED", "PARTIAL", "DENIED"])
+    outcome[linked] = AuthStatus.APPROVED
+    outcome[np.isin(scen, ["PAS-02", "PAS-03"])] = AuthStatus.PENDED_INFO
+    outcome[scen == "PAS-04"] = AuthStatus.DENIED
+    decided = np.isin(outcome, [AuthStatus.APPROVED, AuthStatus.PARTIAL, AuthStatus.DENIED])
     det_dt = received + (arr.u("det_at") * 0.95 * (due - received).astype(np.int64)).astype("timedelta64[s]")
     det_dt[linked] = received[linked] + arr.integers("det_lag", 1, 4)[linked].astype("timedelta64[D]")
     late = decided & (det_dt > ctx.as_of.astype("datetime64[s]") + np.timedelta64(23, "h"))
-    outcome[late] = "IN_REVIEW"
+    outcome[late] = AuthStatus.IN_REVIEW
     decided &= ~late
     status = outcome
     # PAS-01 tags every row that satisfies its recipe: standard review still open, no documents pending
-    routine = ~linked & (status == "IN_REVIEW") & ~urgent & np.isin(scen, ["BASE", "PAS-01"])
+    routine = ~linked & (status == AuthStatus.IN_REVIEW) & ~urgent & np.isin(scen, ["BASE", "PAS-01"])
     scen = np.where(routine, "PAS-01", np.where(scen == "PAS-01", "BASE", scen))
 
     # codes per auth (line 0)
@@ -329,16 +333,16 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     plan_ids = m["plan_id"][a_member]
     member_ids = m["member_id"][a_member]
     requesting = np.array([inp["pcp"].get(mid) for mid in member_ids], dtype=object)
-    fallback = pick_provider(inp, plan_ids, "PCP", np.ones(n, bool), arr.u("req"))
+    fallback = pick_provider(inp, plan_ids, ProviderRole.PCP, np.ones(n, bool), arr.u("req"))
     requesting = np.where(requesting == None, fallback, requesting)  # noqa: E711
-    servicing = pick_provider(inp, plan_ids, "SPECIALIST", np.ones(n, bool), arr.u("svc"))
+    servicing = pick_provider(inp, plan_ids, ProviderRole.SPECIALIST, np.ones(n, bool), arr.u("svc"))
     servicing[linked] = c["billing"][lk]
-    fac_role = np.where(stype == "INPATIENT", "HOSPITAL", "POSTACUTE")
-    facility = np.where(np.isin(stype, ["INPATIENT", "SNF", "HOME_HEALTH"]), None, None).astype(object)
-    for r in ("HOSPITAL", "POSTACUTE"):
-        mask = np.isin(stype, ["INPATIENT", "SNF", "HOME_HEALTH"]) & (fac_role == r)
+    fac_role = np.where(stype == ServiceType.INPATIENT, ProviderRole.HOSPITAL, ProviderRole.POSTACUTE)
+    facility = np.where(np.isin(stype, [ServiceType.INPATIENT, ServiceType.SNF, ServiceType.HOME_HEALTH]), None, None).astype(object)
+    for r in (ProviderRole.HOSPITAL, ProviderRole.POSTACUTE):
+        mask = np.isin(stype, [ServiceType.INPATIENT, ServiceType.SNF, ServiceType.HOME_HEALTH]) & (fac_role == r)
         facility[mask] = pick_provider(inp, plan_ids[mask], r, np.ones(mask.sum(), bool), arr.u(f"fac:{r}")[mask])
-    persona = np.where(np.isin(stype, ["SNF", "INPATIENT", "HOME_HEALTH"]), "DISCHARGE",
+    persona = np.where(np.isin(stype, [ServiceType.SNF, ServiceType.INPATIENT, ServiceType.HOME_HEALTH]), "DISCHARGE",
                        arr.choice("persona", ["OFFICE", "REFERRAL"], [50, 50]))
 
     auth_ids = np.asarray(ctx.ids("auth_request", a_key), dtype=object)
@@ -370,10 +374,10 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     alrr = ctx.rr("auth_line", a_key[ai] * 4 + aj)
     req_units = alrr.integers("units", 1, 13)
     out_i = status[ai]
-    appr = np.where(out_i == "APPROVED", req_units, np.where(out_i == "PARTIAL", np.maximum(req_units // 2, 1),
-                    np.where(out_i == "DENIED", 0, -1)))
-    l_status = np.where(out_i == "APPROVED", "APPROVED", np.where(out_i == "PARTIAL", "MODIFIED",
-                        np.where(out_i == "DENIED", "DENIED", None)))
+    appr = np.where(out_i == AuthStatus.APPROVED, req_units, np.where(out_i == AuthStatus.PARTIAL, np.maximum(req_units // 2, 1),
+                    np.where(out_i == AuthStatus.DENIED, 0, -1)))
+    l_status = np.where(out_i == AuthStatus.APPROVED, AuthLineStatus.APPROVED, np.where(out_i == AuthStatus.PARTIAL, AuthLineStatus.MODIFIED,
+                        np.where(out_i == AuthStatus.DENIED, AuthLineStatus.DENIED, None)))
     if ctx.wants("auth_line"):
       ctx.write("auth_line", {
         "auth_line_id": pa.array(ctx.ids("auth_line", a_key[ai] * 4 + aj)),
@@ -381,7 +385,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
         "cpt_hcpcs_or_ndc": pa.array(np.where(aj == 0, cpt0[ai], alrr.choice("cpt2", ANCILLARY)).tolist()),
         "units_requested": pa.array(req_units),
         "units_approved": pa.array([None if x < 0 else int(x) for x in appr], pa.int64()),
-        "site_of_service": pa.array(np.where(np.isin(stype[ai], ["INPATIENT"]), "21", np.where(stype[ai] == "SNF", "31", "22")).tolist()),
+        "site_of_service": pa.array(np.where(np.isin(stype[ai], [ServiceType.INPATIENT]), "21", np.where(stype[ai] == ServiceType.SNF, "31", "22")).tolist()),
         "line_status": pa.array(l_status.tolist(), pa.string()),
       }, scenario=scen[ai])
 
@@ -389,7 +393,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
     d = np.where(decided)[0]
     drr = ctx.rr("auth_determination", a_key[d])
     d_out = status[d]
-    denied = d_out == "DENIED"
+    denied = d_out == AuthStatus.DENIED
     valid_from = recv_day[d]
     valid_to = valid_from + 90 * DAY
     valid_to[linked[d]] = c["s_from"][lk] + 60 * DAY
@@ -404,7 +408,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
         "outcome": pa.array(d_out.tolist()),
         "valid_from": dates(np.where(denied, NAT, valid_from)),
         "valid_to": dates(np.where(denied, NAT, valid_to)),
-        "denial_category": pa.array(np.where(denied, "MED_NECESSITY", None).tolist(), pa.string()),
+        "denial_category": pa.array(np.where(denied, DenialCategory.MED_NECESSITY, None).tolist(), pa.string()),
         "denial_rationale": pa.array(rationale, pa.string()),
         "criteria_asset_id": pa.array([pa_policy_asset_id(ctx, cp) for cp in cpt0[d]]),
         "decided_by_role": pa.array(role.tolist()),
@@ -413,7 +417,7 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
       }, scenario=scen[d])
 
     # open reviews
-    o = np.where(np.isin(status, ["IN_REVIEW", "PENDED_INFO", "SUBMITTED"]))[0]
+    o = np.where(np.isin(status, [AuthStatus.IN_REVIEW, AuthStatus.PENDED_INFO, AuthStatus.SUBMITTED]))[0]
     orr = ctx.rr("clinical_review_queue", a_key[o])
     if ctx.wants("clinical_review_queue"):
       ctx.write("clinical_review_queue", {
@@ -422,18 +426,18 @@ def gen_auths(ctx: GenContext, inp: dict, c: dict) -> dict:
         "review_level": pa.array(orr.choice("level", ["NURSE", "MEDICAL_DIRECTOR"], [80, 20]).tolist()),
         "assigned_dt": stamps(received[o] + 2 * HOUR),
         "sla_due_dt": stamps(due[o]),
-        "status": pa.array(np.where(status[o] == "PENDED_INFO", "WAITING", orr.choice("qs", ["WAITING", "IN_REVIEW"])).tolist()),
+        "status": pa.array(np.where(status[o] == AuthStatus.PENDED_INFO, "WAITING", orr.choice("qs", ["WAITING", "IN_REVIEW"])).tolist()),
         "p2p_available_until": stamps(np.full(len(o), np.datetime64("NaT", "s"))),
       }, scenario=scen[o])
 
     # documentation: REQUESTED for pended auths; RECEIVED for 30% of decided ones
-    doc_req = (status == "PENDED_INFO") | (decided & arr.bernoulli("had_docs", 0.3) & ~linked)
+    doc_req = (status == AuthStatus.PENDED_INFO) | (decided & arr.bernoulli("had_docs", 0.3) & ~linked)
     q = np.where(doc_req)[0]
     qrr = ctx.rr("documentation_requirement", a_key[q])
     doc_type = qrr.choice("doc", ["CLINICAL_NOTES", "IMAGING", "LABS", "PT_EVAL", "PRESCRIBER_STATEMENT"]).astype(object)
     doc_type[scen[q] == "PAS-02"] = "DISCHARGE_SUMMARY"
     doc_type[scen[q] == "PAS-03"] = "PT_EVAL"
-    pended = status[q] == "PENDED_INFO"
+    pended = status[q] == AuthStatus.PENDED_INFO
     req_dt = recv_day[q] + DAY
     if ctx.wants("documentation_requirement"):
       ctx.write("documentation_requirement", {
@@ -456,8 +460,8 @@ def plan_appeals(ctx: GenContext, c: dict) -> dict:
     """Appeals on denied claims: 12% baseline plus the PAP scenarios. Returns per-appeal arrays (claim positions)."""
     status, scen, cat = c["status"], c["scen"], c["denial_cat"]
     lob = c["m"]["lob"][c["ci"]]
-    deadline_days = np.where(lob == "COMMERCIAL", 180, 60)
-    appealable = (status == "DENIED") & (cat != "DUPLICATE") & (cat != "AUTH")
+    deadline_days = np.where(lob == Lob.COMMERCIAL, 180, 60)
+    appealable = (status == ClaimStatus.DENIED) & (cat != DenialCategory.DUPLICATE) & (cat != DenialCategory.AUTH)
     rr = c["crr"]
     other_scenario = np.isin(scen, sorted((catalog.FORCED_CLAIM_SCENARIOS | {"PAP-01"}) - {"PAP-02", "PAP-03", "PAP-04"}))
     pick = appealable & ((rr.bernoulli("appeal", 0.12) & ~other_scenario) | np.isin(scen, ["PAP-02", "PAP-03", "PAP-04"]))
@@ -468,12 +472,12 @@ def plan_appeals(ctx: GenContext, c: dict) -> dict:
     sc = scen[ap]
     filed = adjud + arr.integers("file_lag", 3, 26).astype("timedelta64[D]")
     filed = np.where(sc == "PAP-04", deadline + arr.integers("late", 3, 21).astype("timedelta64[D]"), filed)
-    st = arr.choice("status", ["OPEN", "IN_REVIEW", "DECIDED"], [40, 40, 20]).astype(object)
-    outcome = np.where(st == "DECIDED", arr.choice("outcome", ["UPHELD", "OVERTURNED"], [60, 40]), None).astype(object)
-    st[sc == "PAP-02"], outcome[sc == "PAP-02"] = "IN_REVIEW", None
-    st[sc == "PAP-03"], outcome[sc == "PAP-03"] = "DECIDED", "OVERTURNED"
-    st[sc == "PAP-04"], outcome[sc == "PAP-04"] = "OPEN", None
-    decision = np.where(st == "DECIDED", filed + arr.integers("dec_lag", 5, 30).astype("timedelta64[D]"), NAT)
+    st = arr.choice("status", [AppealStatus.OPEN, AppealStatus.IN_REVIEW, AppealStatus.DECIDED], [40, 40, 20]).astype(object)
+    outcome = np.where(st == AppealStatus.DECIDED, arr.choice("outcome", [AppealOutcome.UPHELD, AppealOutcome.OVERTURNED], [60, 40]), None).astype(object)
+    st[sc == "PAP-02"], outcome[sc == "PAP-02"] = AppealStatus.IN_REVIEW, None
+    st[sc == "PAP-03"], outcome[sc == "PAP-03"] = AppealStatus.DECIDED, AppealOutcome.OVERTURNED
+    st[sc == "PAP-04"], outcome[sc == "PAP-04"] = AppealStatus.OPEN, None
+    decision = np.where(st == AppealStatus.DECIDED, filed + arr.integers("dec_lag", 5, 30).astype("timedelta64[D]"), NAT)
     ok = filed <= ctx.as_of
     ok &= np.isnat(decision) | (decision <= ctx.as_of)
     # a scenario that cannot fit before the as-of date falls back to a baseline denial
@@ -488,13 +492,13 @@ def plan_reprocessing(ctx: GenContext, c: dict, appeals: dict) -> dict:
     overturned baseline appeals (APPEAL_OVERTURN) and MCI-04 corrections of paid claims (PROVIDER_CORRECTION).
     PAP-03 stays 'awaiting reprocessing'."""
     scen = c["scen"]
-    over = appeals["outcome"] == "OVERTURNED"
+    over = appeals["outcome"] == AppealOutcome.OVERTURNED
     a_pos = appeals["pos"][over]
     a_dec = appeals["decision"][over]
     awaiting = scen[a_pos] == "PAP-03"
     a_pos, a_dec = a_pos[~awaiting], a_dec[~awaiting]
     a_dt = a_dec + 2 * DAY
-    m_pos = np.where((scen == "MCI-04") & (c["status"] == "PAID"))[0]
+    m_pos = np.where((scen == "MCI-04") & (c["status"] == ClaimStatus.PAID))[0]
     m_dt = c["paid_dt"][m_pos] + 3 * DAY
     pos = np.concatenate([a_pos, m_pos]).astype(np.int64)
     when = np.concatenate([a_dt, m_dt]).astype("datetime64[D]")
@@ -519,8 +523,8 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
 
     # ---------------- final status of the originals
     status = c["status"].copy()
-    status[rp["pos"][rp["trigger"] == "APPEAL_OVERTURN"]] = "REPROCESSED"
-    status[rp["pos"][rp["trigger"] == "PROVIDER_CORRECTION"]] = "ADJUSTED"
+    status[rp["pos"][rp["trigger"] == "APPEAL_OVERTURN"]] = ClaimStatus.REPROCESSED
+    status[rp["pos"][rp["trigger"] == "PROVIDER_CORRECTION"]] = ClaimStatus.ADJUSTED
 
     # ---------------- replacement claims (key + 32 keeps them unique per member)
     r = rp["pos"]
@@ -532,20 +536,17 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
     r_paid = r_allowed - r_coins
     nr = len(r)
     r_tot = lambda x: np.bincount(r_li, weights=x, minlength=nr).astype(np.int64)  # noqa: E731
-    r_ckey = c["ckey"][r] + 32  # replacement claim key: original + 32 (claim numbers stay below 20)
+    r_ckey = keys.replacement_key(c["ckey"][r])
     r_paid_dt = np.minimum(rp["when"] + DAY, ctx.as_of)
 
     claim_ids = np.asarray(ctx.ids("claim_header", c["ckey"]), dtype=object)
     r_claim_ids = np.asarray(ctx.ids("claim_header", r_ckey), dtype=object)
     member_ids = c["m"]["member_id"][c["ci"]]
 
-    def number(keys):
-        return [f"CLM-{int(k // 64) + 1:07d}-{int(k % 64):02d}" for k in keys]
-
     if ctx.wants("claim_header"):
         ctx.write("claim_header", {
             "claim_id": pa.array(np.concatenate([claim_ids, r_claim_ids]).tolist()),
-            "claim_number": pa.array(number(c["ckey"]) + number(r_ckey)),
+            "claim_number": pa.array(keys.claim_numbers(c["ckey"]) + keys.claim_numbers(r_ckey)),
             "claim_type": pa.array(np.concatenate([ctype, ctype[r]]).tolist()),
             "member_id": pa.array(np.concatenate([member_ids, member_ids[r]]).tolist()),
             "plan_id": pa.array(np.concatenate([c["plan_ids"], c["plan_ids"][r]]).tolist()),
@@ -559,12 +560,12 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
             "received_dt": dates(np.concatenate([c["received"], rp["when"]])),
             "adjudicated_dt": dates(np.concatenate([c["adjud"], rp["when"]])),
             "paid_dt": dates(np.concatenate([c["paid_dt"], r_paid_dt])),
-            "status": pa.array(np.concatenate([status, np.full(nr, "PAID", dtype=object)]).tolist()),
+            "status": pa.array(np.concatenate([status, np.full(nr, ClaimStatus.PAID, dtype=object)]).tolist()),
             "network_status": pa.array(np.concatenate([c["network"], c["network"][r]]).tolist()),
             "is_emergency": pa.array(np.concatenate([c["emergency"], c["emergency"][r]])),
             "auth_id": pa.array(np.concatenate([claim_auth, claim_auth[r]]).tolist(), pa.string()),
-            "bill_type": pa.array(np.concatenate([np.where(ctype == "FACILITY", np.where(c["inpatient"], "0111", "0131"), None),
-                                                  np.where(ctype[r] == "FACILITY", np.where(c["inpatient"][r], "0111", "0131"), None)]).tolist(), pa.string()),
+            "bill_type": pa.array(np.concatenate([np.where(ctype == ClaimType.FACILITY, np.where(c["inpatient"], "0111", "0131"), None),
+                                                  np.where(ctype[r] == ClaimType.FACILITY, np.where(c["inpatient"][r], "0111", "0131"), None)]).tolist(), pa.string()),
             "drg_code": pa.array(np.concatenate([np.where(c["inpatient"], crr.choice("drg", ["470", "291", "193", "871"]), None),
                                                  np.where(c["inpatient"], crr.choice("drg", ["470", "291", "193", "871"]), None)[r]]).tolist(), pa.string()),
             "primary_dx": pa.array(np.concatenate([crr.choice("dx", catalog.ICD10), crr.choice("dx", catalog.ICD10)[r]]).tolist()),
@@ -575,7 +576,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
         }, scenario=np.concatenate([scen, scen[r]]))
 
     line_ids = np.asarray(ctx.ids("claim_line", c["lkey"]), dtype=object)
-    r_lkey = r_ckey[r_li] * 8 + ln[r_lines]
+    r_lkey = keys.line_key(r_ckey[r_li], ln[r_lines])
     r_line_ids = np.asarray(ctx.ids("claim_line", r_lkey), dtype=object)
     if ctx.wants("claim_line"):
         ctx.write("claim_line", {
@@ -583,7 +584,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
             "claim_id": pa.array(np.concatenate([claim_ids[li], r_claim_ids[r_li]]).tolist()),
             "line_no": pa.array(np.concatenate([ln + 1, ln[r_lines] + 1]).astype(np.int32)),
             "cpt_hcpcs": pa.array(np.concatenate([c["cpt"], c["cpt"][r_lines]]).tolist(), pa.string()),
-            "revenue_code": pa.array(np.where(np.concatenate([ctype[li], ctype[li[r_lines]]]) == "FACILITY", "0120", None).tolist(), pa.string()),
+            "revenue_code": pa.array(np.where(np.concatenate([ctype[li], ctype[li[r_lines]]]) == ClaimType.FACILITY, "0120", None).tolist(), pa.string()),
             "modifier": pa.array([None] * (len(li) + len(r_lines)), pa.string()),
             "units": pa.array(np.concatenate([c["units"], c["units"][r_lines]])),
             "billed": money(np.concatenate([c["billed"], c["billed"][r_lines]])),
@@ -592,7 +593,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
             "deductible": money(np.concatenate([c["ded"], np.zeros(len(r_lines), np.int64)])),
             "copay": money(np.concatenate([c["copay"], np.zeros(len(r_lines), np.int64)])),
             "coinsurance": money(np.concatenate([c["coins"], r_coins])),
-            "line_status": pa.array(np.concatenate([c["line_status"], np.full(len(r_lines), "PAID", dtype=object)]).tolist()),
+            "line_status": pa.array(np.concatenate([c["line_status"], np.full(len(r_lines), ClaimStatus.PAID, dtype=object)]).tolist()),
         }, scenario=np.concatenate([scen[li], scen[li[r_lines]]]))
 
     # pharmacy detail (R-08: exactly one per pharmacy claim)
@@ -615,13 +616,13 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
         }, scenario=scen[ph])
 
     # denials (claim level, anchored on line 1); they stay on reprocessed originals as history
-    dn = np.where(c["status"] == "DENIED")[0]
+    dn = np.where(c["status"] == ClaimStatus.DENIED)[0]
     if ctx.wants("claim_denial"):
         first_line = {int(ci): lid for ci, lid, l in zip(li, line_ids, ln) if l == 0}
         cat = c["denial_cat"][dn]
         lob = c["m"]["lob"][c["ci"][dn]]
-        appealable = (cat != "DUPLICATE") & (cat != "AUTH")
-        deadline = c["adjud"][dn] + np.where(lob == "COMMERCIAL", 180, 60).astype("timedelta64[D]")
+        appealable = (cat != DenialCategory.DUPLICATE) & (cat != DenialCategory.AUTH)
+        deadline = c["adjud"][dn] + np.where(lob == Lob.COMMERCIAL, 180, 60).astype("timedelta64[D]")
         ctx.write("claim_denial", {
             "denial_id": pa.array(ctx.ids("claim_denial", c["ckey"][dn])),
             "claim_id": pa.array(claim_ids[dn].tolist()),
@@ -637,7 +638,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
         }, scenario=scen[dn])
 
     # pends
-    pd_ = np.where(c["status"] == "PENDED")[0]
+    pd_ = np.where(c["status"] == ClaimStatus.PENDED)[0]
     if ctx.wants("claim_pend"):
         prr = ctx.rr("claim_pend", c["ckey"][pd_])
         reason = prr.choice("reason", ["RECORDS_REQUEST", "COB_INFO", "CLINICAL_REVIEW", "PRICING"], [40, 25, 20, 15]).astype(object)
@@ -657,21 +658,21 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
     # adjustments (F-05): paid lines CO-45 / PR-1 / PR-2 / PR-3; denied lines CO-<carc> = billed; replacements CO-45 / PR-2
     if ctx.wants("claim_adjustment"):
         a_line, a_code, a_amt, a_key, a_date, a_scen = [], [], [], [], [], []
-        paid_l = c["line_status"] == "PAID"
-        den_l = c["line_status"] == "DENIED"
+        paid_l = c["line_status"] == ClaimStatus.PAID
+        den_l = c["line_status"] == ClaimStatus.DENIED
         for slot, code, amt, mask in ((0, "CO-45", c["billed"] - c["allowed"], paid_l), (1, "PR-1", c["ded"], paid_l),
                                       (2, "PR-2", c["coins"], paid_l), (3, "PR-3", c["copay"], paid_l)):
             sel = np.where(mask & (amt > 0))[0]
             a_line.append(line_ids[sel]); a_code.append(np.full(len(sel), code, dtype=object)); a_amt.append(amt[sel])
-            a_key.append(c["lkey"][sel] * 8 + slot); a_date.append(c["adjud"][li[sel]]); a_scen.append(scen[li[sel]])
+            a_key.append(keys.adjustment_key(c["lkey"][sel], slot)); a_date.append(c["adjud"][li[sel]]); a_scen.append(scen[li[sel]])
         sel = np.where(den_l)[0]
         a_line.append(line_ids[sel])
         a_code.append(np.array([f"CO-{catalog.DENIAL_CATEGORIES[x][0]}" for x in c["denial_cat"][li[sel]]], dtype=object))
-        a_amt.append(c["billed"][sel]); a_key.append(c["lkey"][sel] * 8 + 4); a_date.append(c["adjud"][li[sel]]); a_scen.append(scen[li[sel]])
+        a_amt.append(c["billed"][sel]); a_key.append(keys.adjustment_key(c["lkey"][sel], keys.DENIAL_ADJUSTMENT_SLOT)); a_date.append(c["adjud"][li[sel]]); a_scen.append(scen[li[sel]])
         for slot, code, amt in ((0, "CO-45", c["billed"][r_lines] - r_allowed), (2, "PR-2", r_coins)):
             sel = np.where(amt > 0)[0]
             a_line.append(r_line_ids[sel]); a_code.append(np.full(len(sel), code, dtype=object)); a_amt.append(amt[sel])
-            a_key.append(r_lkey[sel] * 8 + slot); a_date.append(rp["when"][r_li[sel]]); a_scen.append(scen[li[r_lines[sel]]])
+            a_key.append(keys.adjustment_key(r_lkey[sel], slot)); a_date.append(rp["when"][r_li[sel]]); a_scen.append(scen[li[r_lines[sel]]])
         akey = np.concatenate(a_key).astype(np.int64)
         order = np.argsort(akey, kind="stable")
         codes = np.concatenate(a_code)[order] if akey.size else np.array([], dtype=object)
@@ -686,7 +687,7 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
 
     # payments: originals paid at adjudication (adjusted ones too) + replacement payments
     if ctx.wants("claim_payment"):
-        py = np.where(c["status"] == "PAID")[0]
+        py = np.where(c["status"] == ClaimStatus.PAID)[0]
         yrr = ctx.rr("claim_payment", c["ckey"][py])
         payee = np.array([inp["tin"][b] for b in c["billing"][py]], dtype=object)
         wrong = scen[py] == "PPI-04"  # payee TIN differs from the billing group
@@ -719,13 +720,13 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
             "claim_id": pa.array(claim_ids[pos].tolist(), pa.string()),
             "filed_by": pa.array(["PROVIDER"] * len(pos), pa.string()),
             "level": pa.array(["L1"] * len(pos), pa.string()),
-            "reason": pa.array(["MED_NECESSITY" if x == "MED_NECESSITY" else "OTHER" for x in c["denial_cat"][pos]], pa.string()),
+            "reason": pa.array([DenialCategory.MED_NECESSITY if x == DenialCategory.MED_NECESSITY else "OTHER" for x in c["denial_cat"][pos]], pa.string()),
             "filed_dt": dates(appeals["filed"]),
             "deadline_dt": dates(appeals["deadline"]),
             "status": pa.array(appeals["status"].tolist(), pa.string()),
             "outcome": pa.array(appeals["outcome"].tolist(), pa.string()),
             "decision_dt": dates(appeals["decision"]),
-            "documents_received": pa.array([["clinical_notes"] if st != "OPEN" else [] for st in appeals["status"]], pa.list_(pa.string())),
+            "documents_received": pa.array([["clinical_notes"] if st != AppealStatus.OPEN else [] for st in appeals["status"]], pa.list_(pa.string())),
             "late_filing_reason": pa.array(["GOOD_CAUSE_REQUESTED" if f > d else None for f, d in zip(appeals["filed"], appeals["deadline"])],
                                            pa.string()),
         }, scenario=scen[pos])
@@ -745,20 +746,20 @@ def write_claims(ctx: GenContext, inp: dict, c: dict, claim_auth: np.ndarray) ->
 
     # accumulators (F-03): PR liability on claims that are PAID in their final version
     if ctx.wants("member_accumulator"):
-        final_paid_orig = (status == "PAID")[li] & (c["line_status"] == "PAID")
+        final_paid_orig = (status == ClaimStatus.PAID)[li] & (c["line_status"] == ClaimStatus.PAID)
         pl = np.where(final_paid_orig)[0]
         mem = np.concatenate([c["midx"][c["ci"][li[pl]]], c["midx"][c["ci"][li[r_lines]]]])
         net = np.concatenate([c["network"][li[pl]], c["network"][li[r_lines]]])
         ded = np.concatenate([c["ded"][pl], np.zeros(len(r_lines), np.int64)])
         oop = np.concatenate([(c["ded"] + c["copay"] + c["coins"])[pl], r_coins])
-        gkey = mem * 2 + np.where(net == "IN", 0, 1)
+        gkey = mem * 2 + np.where(net == NetworkStatus.IN, 0, 1)
         uniq, inv = np.unique(gkey, return_inverse=True)
         member_of = {int(mx): mid for mx, mid in zip(c["midx"], c["m"]["member_id"])}
         ctx.write("member_accumulator", {
             "accumulator_id": pa.array(ctx.ids("member_accumulator", uniq), pa.string()),
             "member_id": pa.array([member_of[int(k // 2)] for k in uniq], pa.string()),
             "plan_year": pa.array(np.full(len(uniq), int(str(ctx.as_of)[:4]))),
-            "network": pa.array(np.where(uniq % 2 == 0, "IN", "OON").tolist(), pa.string()),
+            "network": pa.array(np.where(uniq % 2 == 0, NetworkStatus.IN, NetworkStatus.OON).tolist(), pa.string()),
             "deductible_met": money(np.bincount(inv, weights=ded, minlength=len(uniq)).astype(np.int64)),
             "oop_met": money(np.bincount(inv, weights=oop, minlength=len(uniq)).astype(np.int64)),
         })

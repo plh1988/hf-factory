@@ -136,6 +136,8 @@ Knowledge search embeds the question as a query embedding and searches the `Vect
 ## 10. Error model
 
 Errors are JSON `{"error", "message", "is_synthetic"}`.
+Codes and their HTTP status are defined once in `api_engine/errors.py` (`ErrorCode`); control-plane rejections in
+`control/errors.py` (`RejectCode`). Coded domain values (claim status, claim type, LOB, ...) are StrEnums in `codes.py`.
 
 | HTTP | Codes |
 |---|---|

@@ -27,7 +27,8 @@ from starlette.routing import Mount
 
 from factory.api_engine.stage import run_api_engine
 from factory.contracts import ApiJob, DataJob
-from factory.control.registry import JobRejected, Registry, validate_api_job, validate_data_job
+from factory.control.errors import JobRejected, RejectCode
+from factory.control.registry import Registry, validate_api_job, validate_data_job
 from factory.data_engine import catalog
 from factory.data_engine.runner import STAGES, DataEngineError, run_stage
 
@@ -88,7 +89,8 @@ def create_control_app(registry: Registry) -> FastAPI:
                                     privacy_options=job.privacy_scan, run=run.data if stage == "s7" else None)
                 except DataEngineError as exc:
                     run.completed.pop(stage, None)
-                    return JSONResponse({"error": "STAGE_FAILED", "message": str(exc), "stage": stage, "tenant": tid}, status_code=500)
+                    return JSONResponse({"error": RejectCode.STAGE_FAILED, "message": str(exc), "stage": stage, "tenant": tid},
+                                        status_code=RejectCode.STAGE_FAILED.status)
                 run.completed[stage] = res
                 if stage != "s7":  # an earlier stage changed: validation and the API must run again
                     run.completed.pop("s7", None)
@@ -145,7 +147,7 @@ def create_control_app(registry: Registry) -> FastAPI:
     def _run(tenant: str):
         """The tenant's run, or a 404 NO_RUN rejection."""
         if tenant not in registry.runs:
-            raise JobRejected(404, "NO_RUN", f"No run for tenant {tenant!r}. Start with POST /factory/data-engine/s3.")
+            raise JobRejected(RejectCode.NO_RUN, f"No run for tenant {tenant!r}. Start with POST /factory/data-engine/s3.")
         return registry.runs[tenant]
 
     @app.get("/factory/runs", tags=["Runs"])
@@ -167,7 +169,7 @@ def create_control_app(registry: Registry) -> FastAPI:
         try:
             run = _run(tenant)
             if run.data.manifest is None:
-                raise JobRejected(404, "NO_MANIFEST", "Run s7 first.")
+                raise JobRejected(RejectCode.NO_MANIFEST, "Run s7 first.")
         except JobRejected as exc:
             return _rejected(exc)
         return run.data.manifest.model_dump(mode="json")
@@ -178,7 +180,7 @@ def create_control_app(registry: Registry) -> FastAPI:
             run = _run(tenant)
             data = run.stores.blobs.get("reports/rule-report.json")
         except (JobRejected, KeyError):
-            return _rejected(JobRejected(404, "NO_REPORT", "Run s7 first."))
+            return _rejected(JobRejected(RejectCode.NO_REPORT, "Run s7 first."))
         return json.loads(data)
 
     @app.get("/factory/runs/{tenant}/tables/{entity}", tags=["Runs"], summary="Peek at generated rows (find IDs for testing)")
@@ -187,7 +189,7 @@ def create_control_app(registry: Registry) -> FastAPI:
         try:
             run = _run(tenant)
             if entity not in catalog.PRIMARY_KEY or not run.stores.tables.exists(entity):
-                raise JobRejected(404, "NO_TABLE", f"No generated table {entity!r} for tenant {tenant!r}.")
+                raise JobRejected(RejectCode.NO_TABLE, f"No generated table {entity!r} for tenant {tenant!r}.")
         except JobRejected as exc:
             return _rejected(exc)
         where, params = ("WHERE scenario_id = ?", [scenario_id]) if scenario_id else ("", [])
@@ -226,9 +228,9 @@ def create_control_app(registry: Registry) -> FastAPI:
         try:
             run = _run(tenant)
             if run.api is None:
-                raise JobRejected(404, "NOT_DEPLOYED", "Run s8 first.")
+                raise JobRejected(RejectCode.NOT_DEPLOYED, "Run s8 first.")
             if not run.stores.profile.startswith("memory"):
-                raise JobRejected(403, "USE_SECRET_MANAGER", "Read the secret from Secret Manager in cloud profiles.")
+                raise JobRejected(RejectCode.USE_SECRET_MANAGER, "Read the secret from Secret Manager in cloud profiles.")
         except JobRejected as exc:
             return _rejected(exc)
         creds = json.loads(run.stores.blobs.get("secrets/api-client.json"))

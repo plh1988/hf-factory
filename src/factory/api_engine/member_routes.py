@@ -18,7 +18,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from factory.api_engine.repository import Repository
-from factory.api_engine.routes import Synthetic, error, repo
+from factory import codes
+from factory.api_engine.errors import ErrorCode, error
+from factory.api_engine.routes import Synthetic, repo
 from factory.api_engine.security import require_client
 from factory.data_engine import catalog
 
@@ -31,20 +33,20 @@ def member_access(r: Repository, member_ref: str, on_behalf_of: str | None, use_
     """Find the member; enforce caregiver scope (R-06, C-01 minimum necessary)."""
     m = r.member(member_ref)
     if m is None:
-        raise error(404, "MEMBER_NOT_FOUND", f"No member {member_ref}.")
+        raise error(ErrorCode.MEMBER_NOT_FOUND, f"No member {member_ref}.")
     if on_behalf_of:
         if not r.exists("family_relationship"):
-            raise error(403, "SCOPE_NOT_AUTHORIZED", "No caregiver authorizations exist for this tenant.")
+            raise error(ErrorCode.SCOPE_NOT_AUTHORIZED, "No caregiver authorizations exist for this tenant.")
         cg = r.caregiver(m["member_id"], on_behalf_of)
         needed = catalog.CAREGIVER_SCOPE.get(use_case, use_case)
         if cg is None or not cg["verified"]:
-            raise error(403, "CAREGIVER_NOT_VERIFIED", "No verified caregiver authorization on file for this member.")
+            raise error(ErrorCode.CAREGIVER_NOT_VERIFIED, "No verified caregiver authorization on file for this member.")
         if cg["consent_expiry_dt"] and cg["consent_expiry_dt"] < today:
-            raise error(403, "CONSENT_EXPIRED", f"The caregiver authorization expired on {cg['consent_expiry_dt']}. "
+            raise error(ErrorCode.CONSENT_EXPIRED, f"The caregiver authorization expired on {cg['consent_expiry_dt']}. "
                         "The member can renew it.")
         scope = cg["authorization_scope"] or []
         if "ALL" not in scope and needed not in scope:
-            raise error(403, "SCOPE_NOT_AUTHORIZED", f"The caregiver authorization covers {', '.join(scope) or 'nothing'}, "
+            raise error(ErrorCode.SCOPE_NOT_AUTHORIZED, f"The caregiver authorization covers {', '.join(scope) or 'nothing'}, "
                         f"not {needed}. The member can add it, or join the call.")
     return m
 
@@ -103,9 +105,9 @@ def get_member_benefits(member_id: str, request: Request, on_behalf_of: str | No
     m = member_access(r, member_id, on_behalf_of, "MBN", today)
     e = current_enrollment(r, m["member_id"], today)
     if e is None:
-        raise error(404, "NO_COVERAGE", "No enrollment on file.")
+        raise error(ErrorCode.NO_COVERAGE, "No enrollment on file.")
     p = r.plan(e["plan_id"])
-    acc = {a["network"]: a for a in r.accumulators(m["member_id"], today.year)}.get("IN", {})
+    acc = {a["network"]: a for a in r.accumulators(m["member_id"], today.year)}.get(codes.NetworkStatus.IN, {})
     ded, ded_met = money0(p["deductible"]), money0(acc.get("deductible_met"))
     oop, oop_met = money0(p["oop_max"]), money0(acc.get("oop_met"))
     allowances = json.loads(p["allowances"] or "{}")
@@ -145,7 +147,7 @@ def get_member_accumulators(member_id: str, request: Request, plan_year: int | N
     m = member_access(r, member_id, on_behalf_of, "MBN", today)
     e = current_enrollment(r, m["member_id"], today)
     if e is None:
-        raise error(404, "NO_COVERAGE", "No enrollment on file.")
+        raise error(ErrorCode.NO_COVERAGE, "No enrollment on file.")
     p = r.plan(e["plan_id"])
     year = plan_year or today.year
     acc = {a["network"]: a for a in r.accumulators(m["member_id"], year)}
@@ -157,7 +159,7 @@ def get_member_accumulators(member_id: str, request: Request, plan_year: int | N
         return {"deductible": ded, "deductible_met": met_d, "deductible_remaining": max(ded - met_d, Decimal("0.00")),
                 "oop_max": oop, "oop_met": met_o, "oop_remaining": max(oop - met_o, Decimal("0.00"))}
 
-    return Accumulators(member_id=m["member_number"], plan_year=year, in_network=block("IN"), out_of_network=block("OON"),
+    return Accumulators(member_id=m["member_number"], plan_year=year, in_network=block(codes.NetworkStatus.IN), out_of_network=block(codes.NetworkStatus.OON),
                         scenario_id=m["scenario_id"])
 
 
@@ -206,8 +208,8 @@ def list_member_claims(member_id: str, request: Request, status: str | None = Qu
     rows = r.rows(f"SELECT h.* FROM claim_header h WHERE {where} ORDER BY h.service_from_dt DESC, h.claim_number LIMIT {limit}", params)
     out = []
     for c in rows:
-        d = r.claim_detail(c["claim_id"])["denial"] if c["status"] in ("DENIED", "REPROCESSED") and r.exists("claim_denial") else None
-        version = "replacement" if c["claim_frequency_code"] == "7" else ("superseded" if c["status"] in ("ADJUSTED", "REPROCESSED") else "current")
+        d = r.claim_detail(c["claim_id"])["denial"] if c["status"] in (codes.ClaimStatus.DENIED, codes.ClaimStatus.REPROCESSED) and r.exists("claim_denial") else None
+        version = "replacement" if c["claim_frequency_code"] == "7" else ("superseded" if c["status"] in (codes.ClaimStatus.ADJUSTED, codes.ClaimStatus.REPROCESSED) else "current")
         out.append(MemberClaimSummary(claim_id=c["claim_number"], claim_type=c["claim_type"], status=c["status"],
                                       service_from_dt=c["service_from_dt"], total_billed=c["total_billed"], total_allowed=c["total_allowed"],
                                       total_paid=c["total_paid"], member_resp=c["member_resp"], denial=_denial_view(d),
@@ -238,7 +240,7 @@ def get_claim_detail(claim_id: str, request: Request, member_id: str = Query(...
     m = member_access(r, member_id, on_behalf_of, "MCI", as_of(request))
     c = r.claim(claim_id)
     if c is None or c["member_id"] != m["member_id"]:
-        raise error(404, "CLAIM_NOT_FOUND", f"No claim {claim_id} for member {member_id}.")
+        raise error(ErrorCode.CLAIM_NOT_FOUND, f"No claim {claim_id} for member {member_id}.")
     d = r.claim_detail(c["claim_id"])
     lines = r.rows("SELECT line_no, cpt_hcpcs, units, billed, allowed, deductible, copay, coinsurance, paid, line_status "
                    "FROM claim_line WHERE claim_id = ? ORDER BY line_no", [c["claim_id"]])
@@ -257,7 +259,7 @@ def get_claim_detail(claim_id: str, request: Request, member_id: str = Query(...
             versions["replaced_by"] = h["new_number"] if h["claim_id"] == c["claim_id"] else None
             versions["reprocessing"] = {"trigger": h["trigger"], "reprocess_dt": h["reprocess_dt"], "paid_before": h["paid_before"],
                                         "paid_after": h["paid_after"]}
-    if c["status"] in ("ADJUSTED", "REPROCESSED"):
+    if c["status"] in (codes.ClaimStatus.ADJUSTED, codes.ClaimStatus.REPROCESSED):
         note = f" This version was replaced by {versions['replaced_by']}; the replacement is the current one."
     else:
         note = ""
@@ -290,7 +292,7 @@ def _specialty(text: str) -> str:
     for word, name in SPECIALTY_WORDS.items():
         if word in t:
             return name
-    raise error(422, "UNKNOWN_SPECIALTY", f"Unknown specialty {text!r}. Try: primary care, pediatrics, cardiology, orthopedics, radiology.")
+    raise error(ErrorCode.UNKNOWN_SPECIALTY, f"Unknown specialty {text!r}. Try: primary care, pediatrics, cardiology, orthopedics, radiology.")
 
 
 def _nearest_geo(lat: float, lon: float) -> str:
@@ -337,14 +339,14 @@ def search_providers(request: Request, specialty: str = Query(..., min_length=2)
     if member_id:
         m = r.member(member_id)
         if m is None:
-            raise error(404, "MEMBER_NOT_FOUND", f"No member {member_id}.")
+            raise error(ErrorCode.MEMBER_NOT_FOUND, f"No member {member_id}.")
         e = current_enrollment(r, m["member_id"], today)
         plan_id = e and e["plan_id"]
         lat = m["lat"] if lat is None else lat
         lon = m["lon"] if lon is None else lon
         geo, scen = m["geo_type"], m["scenario_id"]
     if lat is None or lon is None:
-        raise error(422, "LOCATION_REQUIRED", "Send lat and lon, or member_id.")
+        raise error(ErrorCode.LOCATION_REQUIRED, "Send lat and lon, or member_id.")
     geo = geo or _nearest_geo(lat, lon)
     std = None
     if r.exists("access_standard"):
@@ -425,27 +427,27 @@ def change_member_pcp(member_id: str, body: PcpChangeRequest, request: Request, 
     today = as_of(request)
     m = member_access(r, member_id, on_behalf_of, "MPC", today)
     e = r.enrollment_on(m["member_id"], today)
-    if e is None or e["status"] not in ("ACTIVE", "PENDING"):
-        raise error(409, "NO_ACTIVE_COVERAGE", "The member has no active coverage today.")
+    if e is None or e["status"] not in (codes.EnrollmentStatus.ACTIVE, codes.EnrollmentStatus.PENDING):
+        raise error(ErrorCode.NO_ACTIVE_COVERAGE, "The member has no active coverage today.")
     prov = r.one("SELECT p.npi, p.provider_type, p.first_name, p.last_name, p.status, n.status AS part, n.panel_status "
                  "FROM provider p LEFT JOIN network_participation n ON n.npi = p.npi AND n.plan_id = ? WHERE p.npi = ?", [e["plan_id"], body.npi])
     if prov is None:
-        raise error(404, "PROVIDER_NOT_FOUND", f"No provider {body.npi}.")
-    if prov["provider_type"] != "PCP":
-        raise error(409, "NOT_A_PCP", "This provider is not a primary care provider.")
-    if prov["status"] != "ACTIVE" or prov["part"] != "PARTICIPATING":
-        raise error(409, "NOT_PARTICIPATING", "This provider is not participating on the member's plan.")
-    if prov["panel_status"] == "CLOSED":
-        raise error(409, "PANEL_CLOSED", "This provider's panel is closed to new patients.")
+        raise error(ErrorCode.PROVIDER_NOT_FOUND, f"No provider {body.npi}.")
+    if prov["provider_type"] != codes.ProviderType.PCP:
+        raise error(ErrorCode.NOT_A_PCP, "This provider is not a primary care provider.")
+    if prov["status"] != codes.ProviderStatus.ACTIVE or prov["part"] != codes.ParticipationStatus.PARTICIPATING:
+        raise error(ErrorCode.NOT_PARTICIPATING, "This provider is not participating on the member's plan.")
+    if prov["panel_status"] == codes.PanelStatus.CLOSED:
+        raise error(ErrorCode.PANEL_CLOSED, "This provider's panel is closed to new patients.")
     locs = r.rows("SELECT lat, lon FROM practice_location WHERE npi = ?", [body.npi])
     std = r.one("SELECT max_distance_miles FROM access_standard WHERE plan_id = ? AND provider_type_or_specialty = 'PCP' AND geo_type = ?",
                 [e["plan_id"], m["geo_type"]]) if r.exists("access_standard") else None
     if std and locs and min(haversine_mi(m["lat"], m["lon"], x["lat"], x["lon"]) for x in locs) > std["max_distance_miles"]:
-        raise error(409, "OUTSIDE_ACCESS_STANDARD", f"No office of this PCP is within {std['max_distance_miles']} miles of the member "
+        raise error(ErrorCode.OUTSIDE_ACCESS_STANDARD, f"No office of this PCP is within {std['max_distance_miles']} miles of the member "
                     "(e.g. after a move). Search in-area PCPs with GET /v1/providers/search.")
     cur = r.one("SELECT * FROM pcp_assignment WHERE member_id = ? AND status = 'ACTIVE'", [m["member_id"]])
     if cur and cur["pcp_npi"] == body.npi:
-        raise error(409, "ALREADY_PCP", "This provider is already the member's PCP.")
+        raise error(ErrorCode.ALREADY_PCP, "This provider is already the member's PCP.")
     eff = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
     change_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"pcp-change:{m['member_id']}:{body.npi}:{eff}"))
     if cur and not dry_run:
@@ -513,7 +515,7 @@ def get_provider_availability(npi: str, request: Request, member_id: str | None 
     today = as_of(request)
     p = r.one("SELECT npi, provider_type, specialty, first_name, last_name, org_name FROM provider WHERE npi = ?", [npi])
     if p is None:
-        raise error(404, "PROVIDER_NOT_FOUND", f"No provider {npi}.")
+        raise error(ErrorCode.PROVIDER_NOT_FOUND, f"No provider {npi}.")
     sched = r.rows("SELECT * FROM availability_schedule WHERE npi = ? ORDER BY location_id, day_of_week", [npi])
     if visit_type:
         sched = [s for s in sched if visit_type.upper() in (s["appointment_types"] or [])]
@@ -524,7 +526,7 @@ def get_provider_availability(npi: str, request: Request, member_id: str | None 
     if member_id:
         m = r.member(member_id)
         if m is None:
-            raise error(404, "MEMBER_NOT_FOUND", f"No member {member_id}.")
+            raise error(ErrorCode.MEMBER_NOT_FOUND, f"No member {member_id}.")
         scen = m["scenario_id"]
         e = current_enrollment(r, m["member_id"], today)
         if e and r.exists("access_standard"):
@@ -576,19 +578,19 @@ def book_appointment(body: AppointmentRequest, request: Request, on_behalf_of: s
     m = member_access(r, body.member_id, on_behalf_of, "MAS", today)
     e = r.enrollment_on(m["member_id"], today)
     if e is None:
-        raise error(409, "NO_ACTIVE_COVERAGE", "The member has no active coverage today.")
+        raise error(ErrorCode.NO_ACTIVE_COVERAGE, "The member has no active coverage today.")
     part = r.one("SELECT status FROM network_participation WHERE npi = ? AND plan_id = ? AND term_dt IS NULL", [body.npi, e["plan_id"]])
-    if not part or part["status"] != "PARTICIPATING":
-        raise error(409, "NOT_PARTICIPATING", "This provider does not participate on the member's plan; the agent cannot book it.")
+    if not part or part["status"] != codes.ParticipationStatus.PARTICIPATING:
+        raise error(ErrorCode.NOT_PARTICIPATING, "This provider does not participate on the member's plan; the agent cannot book it.")
     sched = r.rows("SELECT * FROM availability_schedule WHERE npi = ? AND location_id = ?", [body.npi, body.location_id])
     slots, _ = _slots(sched, count=200)
     starts = {s["start"].replace(tzinfo=None) for s in slots}
     if body.start.replace(tzinfo=None) not in starts:
-        raise error(409, "SLOT_UNAVAILABLE", "That time is not an open slot. Get open slots from GET /v1/providers/{npi}/availability.")
+        raise error(ErrorCode.SLOT_UNAVAILABLE, "That time is not an open slot. Get open slots from GET /v1/providers/{npi}/availability.")
     appt_id = "APT-" + hashlib.sha256(f"{m['member_id']}|{body.npi}|{body.start.isoformat()}".encode()).hexdigest()[:10].upper()
     blobs = request.app.state.stores.blobs
     if f"appointments/{appt_id}.json" in blobs.list("appointments/"):
-        raise error(409, "ALREADY_BOOKED", f"Appointment {appt_id} already exists.")
+        raise error(ErrorCode.ALREADY_BOOKED, f"Appointment {appt_id} already exists.")
     gaps = [g["measure"] for g in r.open_gaps(m["member_id"])]
     allowances = json.loads((r.plan(e["plan_id"]) or {}).get("allowances") or "{}")
     transport_need = any(s["domain"] == "TRANSPORT" and s["positive"] for s in r.sdoh(m["member_id"]))

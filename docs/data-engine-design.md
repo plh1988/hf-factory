@@ -246,7 +246,7 @@ idempotent (same checksums) and resets s7 and s8.
 |---|---|
 | Per-row counter RNG: every draw = f(seed, entity, row key, draw name), vectorised splitmix64 | data independent of shard count, worker count and order |
 | No wall clock: all dates from `as_of_date` | a replay next month is identical |
-| Anchor-based generation (member → claims → lines) | growing members is prefix-stable (first N members unchanged) |
+| Anchor-based generation (member → claims → lines), packed keys in `data_engine/keys.py` (claim = member×64 + n, line = claim×8 + n) | growing members is prefix-stable (first N members unchanged) |
 | Order-independent checksum per entity (sum of row hashes mod 2⁶⁴, DuckDB pinned) | shard results add up; replays are verifiable |
 | Upserts on deterministic keys | retried tasks and re-run stages never duplicate rows |
 | Content-addressed LLM cache `sha256(model, prompt_version, prompt, seed)` | text replays identically when cached |

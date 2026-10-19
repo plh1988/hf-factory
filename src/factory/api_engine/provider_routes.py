@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from factory.api_engine.repository import Repository
-from factory.api_engine.routes import Synthetic, error, repo, verify_provider
+from factory import codes
+from factory.api_engine.errors import ErrorCode, error
+from factory.api_engine.routes import Synthetic, repo, verify_provider
 from factory.api_engine.security import require_client
 
 NPI = Query(..., min_length=10, max_length=10)
@@ -48,31 +50,31 @@ def file_claim_appeal(claim_id: str, body: AppealRequest, request: Request, dry_
     today: date = request.app.state.as_of
     c = r.claim(claim_id)
     if c is None:
-        raise error(404, "CLAIM_NOT_FOUND", f"No claim {claim_id}.")
+        raise error(ErrorCode.CLAIM_NOT_FOUND, f"No claim {claim_id}.")
     verify_provider(r, body.npi, body.tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     d = r.claim_detail(c["claim_id"])["denial"]
-    if c["status"] != "DENIED" or d is None:
-        raise error(409, "NOT_DENIED", f"Claim {claim_id} is {c['status']}; only denied claims can be appealed.")
+    if c["status"] != codes.ClaimStatus.DENIED or d is None:
+        raise error(ErrorCode.NOT_DENIED, f"Claim {claim_id} is {c['status']}; only denied claims can be appealed.")
     if not d["appealable"]:
-        raise error(409, "NOT_APPEALABLE", f"Denial {d['carc']} ({d['denial_category']}) is not appealable; submit a corrected claim instead.")
+        raise error(ErrorCode.NOT_APPEALABLE, f"Denial {d['carc']} ({d['denial_category']}) is not appealable; submit a corrected claim instead.")
     existing = r.one("SELECT appeal_number, status FROM appeal_record WHERE claim_id = ? AND status <> 'DECIDED'", [c["claim_id"]])
     if existing:
-        raise error(409, "APPEAL_EXISTS", f"Appeal {existing['appeal_number']} is already {existing['status']} for this claim.")
+        raise error(ErrorCode.APPEAL_EXISTS, f"Appeal {existing['appeal_number']} is already {existing['status']} for this claim.")
     if d["appeal_deadline_dt"] and today > d["appeal_deadline_dt"]:
-        raise error(409, "DEADLINE_PASSED", f"The appeal window closed on {d['appeal_deadline_dt']}. A late appeal can be routed to "
+        raise error(ErrorCode.DEADLINE_PASSED, f"The appeal window closed on {d['appeal_deadline_dt']}. A late appeal can be routed to "
                     "exception review with a good-cause reason; the outcome is not guaranteed.")
-    required = ["clinical_notes"] if body.reason == "MED_NECESSITY" and not body.documents else []
+    required = ["clinical_notes"] if body.reason == codes.DenialCategory.MED_NECESSITY and not body.documents else []
     appeal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"appeal:{c['claim_id']}:{body.level}:{today}"))
     number = "APL-" + c["claim_number"][4:] + f"-{body.level}"
     if not dry_run:
       r.insert_row("appeal_record", "appeal_id", {
         "appeal_id": appeal_id, "appeal_number": number, "claim_id": c["claim_id"], "filed_by": "PROVIDER", "level": body.level,
-        "reason": body.reason, "filed_dt": today, "deadline_dt": d["appeal_deadline_dt"], "status": "OPEN", "outcome": None,
+        "reason": body.reason, "filed_dt": today, "deadline_dt": d["appeal_deadline_dt"], "status": codes.AppealStatus.OPEN, "outcome": None,
         "decision_dt": None, "documents_received": body.documents, "late_filing_reason": None,
         "is_synthetic": True, "tenant_id": c["tenant_id"], "scenario_id": c["scenario_id"]})
     step = (f"Submit {', '.join(required)} before {d['appeal_deadline_dt']}." if required
             else f"A decision is due by {today + timedelta(days=30)}.")
-    return AppealCreated(appeal_id=number, claim_id=c["claim_number"], status="VALIDATED" if dry_run else "OPEN", level=body.level, filed_dt=today,
+    return AppealCreated(appeal_id=number, claim_id=c["claim_number"], status="VALIDATED" if dry_run else codes.AppealStatus.OPEN, level=body.level, filed_dt=today,
                          deadline_dt=d["appeal_deadline_dt"], documents_required=required, next_step=step, scenario_id=c["scenario_id"])
 
 
@@ -99,19 +101,19 @@ def get_appeal(appeal_id: str, request: Request, npi: str = NPI, tin: str = TIN,
                _: str = Depends(require_client)) -> AppealStatus:
     a = r.one("SELECT * FROM appeal_record WHERE appeal_number = ? OR appeal_id = ?", [appeal_id, appeal_id])
     if a is None:
-        raise error(404, "APPEAL_NOT_FOUND", f"No appeal {appeal_id}.")
+        raise error(ErrorCode.APPEAL_NOT_FOUND, f"No appeal {appeal_id}.")
     c = r.one("SELECT * FROM claim_header WHERE claim_id = ?", [a["claim_id"]])
     verify_provider(r, npi, tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     late = a["filed_dt"] > a["deadline_dt"]
     rp = None
-    if a["outcome"] == "OVERTURNED":
+    if a["outcome"] == codes.AppealOutcome.OVERTURNED:
         h = r.one("SELECT r.*, n.claim_number AS new_number FROM reprocessing_history r JOIN claim_header n ON n.claim_id = r.new_claim_id "
                   "WHERE r.claim_id = ?", [a["claim_id"]]) if r.exists("reprocessing_history") else None
-        rp = ({"status": "REPROCESSED", "replacement_claim_id": h["new_number"], "reprocess_dt": h["reprocess_dt"],
+        rp = ({"status": codes.ClaimStatus.REPROCESSED, "replacement_claim_id": h["new_number"], "reprocess_dt": h["reprocess_dt"],
                "paid_before": h["paid_before"], "paid_after": h["paid_after"]} if h else
               {"status": "AWAITING_REPROCESSING", "expected_by": a["decision_dt"] + timedelta(days=30)})
-    if a["status"] == "DECIDED":
-        step = ("No action needed; the claim was reprocessed." if rp and rp["status"] == "REPROCESSED" else
+    if a["status"] == codes.AppealStatus.DECIDED:
+        step = ("No action needed; the claim was reprocessed." if rp and rp["status"] == codes.ClaimStatus.REPROCESSED else
                 f"The claim will be reprocessed by {rp['expected_by']}." if rp else
                 "The denial was upheld. A level 2 appeal or external review is available.")
     elif late:
@@ -120,7 +122,7 @@ def get_appeal(appeal_id: str, request: Request, npi: str = NPI, tin: str = TIN,
         step = f"Decision due by {a['filed_dt'] + timedelta(days=30)}."
     return AppealStatus(appeal_id=a["appeal_number"], claim_id=c["claim_number"], level=a["level"], status=a["status"], filed_dt=a["filed_dt"],
                         deadline_dt=a["deadline_dt"], filed_late=late, outcome=a["outcome"], decision_dt=a["decision_dt"],
-                        decision_due_dt=None if a["status"] == "DECIDED" else a["filed_dt"] + timedelta(days=30),
+                        decision_due_dt=None if a["status"] == codes.AppealStatus.DECIDED else a["filed_dt"] + timedelta(days=30),
                         documents_received=a["documents_received"] or [], reprocessing=rp, next_step=step, scenario_id=a["scenario_id"])
 
 
@@ -157,7 +159,7 @@ def get_claim_payments(claim_id: str, npi: str = NPI, tin: str = TIN, r: Reposit
                        _: str = Depends(require_client)) -> PaymentInquiry:
     c = r.claim(claim_id)
     if c is None:
-        raise error(404, "CLAIM_NOT_FOUND", f"No claim {claim_id}.")
+        raise error(ErrorCode.CLAIM_NOT_FOUND, f"No claim {claim_id}.")
     verify_provider(r, npi, tin, [c["billing_npi"], c["rendering_npi"], c["facility_npi"]])
     billing_tin = r.provider(c["billing_npi"])["tin"]
     ids = [c["claim_id"]]

@@ -6,6 +6,8 @@ needs a licensed CPT table or synthetic codes. NDCs below are illustrative, not 
 
 from __future__ import annotations
 
+from factory.codes import AuthStatus, ClaimStatus, DenialCategory, FacilityType, GeoType, Lob, ProviderType
+
 CATALOG_VERSION = "2.4.0"
 
 # Entities per domain: full (primary) list, in generation order.
@@ -185,20 +187,20 @@ CAREGIVER_SCOPE = {"MBN": "BENEFITS", "MCI": "CLAIMS", "MPC": "PCP_CHANGE", "MAS
 
 # Scenario facts the generator enforces (S1 use cases). Others fall back to baseline data.
 SCENARIOS: dict[str, dict] = {
-    "PCS-01": {"anchor": "claim", "type": "happy", "title": "Status by claim number", "claim_status": "PAID"},
-    "PCS-02": {"anchor": "claim", "type": "edge", "title": "Pended for records", "claim_status": "PENDED",
+    "PCS-01": {"anchor": "claim", "type": "happy", "title": "Status by claim number", "claim_status": ClaimStatus.PAID},
+    "PCS-02": {"anchor": "claim", "type": "edge", "title": "Pended for records", "claim_status": ClaimStatus.PENDED,
                "pend_reason": "RECORDS_REQUEST"},
     "PCS-03": {"anchor": "claim", "type": "edge", "title": "Denied CO-16 missing information",
-               "claim_status": "DENIED", "denial_category": "MISSING_INFO"},
+               "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.MISSING_INFO},
     "PCS-04": {"anchor": "claim", "type": "compliance", "title": "Caller fails verification (API-level)",
-               "claim_status": "PAID"},
-    "PAS-01": {"anchor": "auth", "type": "happy", "title": "Routine status check", "auth_status": "IN_REVIEW"},
+               "claim_status": ClaimStatus.PAID},
+    "PAS-01": {"anchor": "auth", "type": "happy", "title": "Routine status check", "auth_status": AuthStatus.IN_REVIEW},
     "PAS-02": {"anchor": "auth", "type": "edge", "title": "Urgent SNF authorization at discharge",
-               "auth_status": "PENDED_INFO", "doc_type": "DISCHARGE_SUMMARY"},
-    "PAS-03": {"anchor": "auth", "type": "edge", "title": "Missing PT evaluation", "auth_status": "PENDED_INFO",
+               "auth_status": AuthStatus.PENDED_INFO, "doc_type": "DISCHARGE_SUMMARY"},
+    "PAS-03": {"anchor": "auth", "type": "edge", "title": "Missing PT evaluation", "auth_status": AuthStatus.PENDED_INFO,
                "doc_type": "PT_EVAL"},
     "PAS-04": {"anchor": "auth", "type": "compliance", "title": "Denied; asks for reviewer details",
-               "auth_status": "DENIED"},
+               "auth_status": AuthStatus.DENIED},
     "PEV-01": {"anchor": "member", "type": "happy", "title": "Active member check"},
     "PEV-02": {"anchor": "member", "type": "edge", "title": "Termed retroactively"},
     "PEV-03": {"anchor": "member", "type": "edge", "title": "Enrollment pending"},
@@ -224,23 +226,23 @@ SCENARIOS.update({
     "MAS-03": {"anchor": "member", "type": "compliance", "title": "No availability within the wait standard (API-level)"},
     "MAS-04": {"anchor": "member", "type": "data", "title": "Stale availability schedule (provider data)"},
     # claim-anchored (s5)
-    "MCI-01": {"anchor": "claim", "type": "happy", "title": "EOB explanation", "claim_status": "PAID"},
+    "MCI-01": {"anchor": "claim", "type": "happy", "title": "EOB explanation", "claim_status": ClaimStatus.PAID},
     "MCI-02": {"anchor": "claim", "type": "edge", "title": "Denied for missing authorization (CO-197)",
-               "claim_status": "DENIED", "denial_category": "AUTH"},
+               "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.AUTH},
     "MCI-03": {"anchor": "claim", "type": "edge", "title": "Pended for coordination of benefits",
-               "claim_status": "PENDED", "pend_reason": "COB_INFO"},
-    "MCI-04": {"anchor": "claim", "type": "data", "title": "Original and reprocessed claim both visible", "claim_status": "PAID"},
-    "PAP-01": {"anchor": "claim", "type": "happy", "title": "Start a claim appeal", "claim_status": "DENIED",
-               "denial_category": "MED_NECESSITY"},
-    "PAP-02": {"anchor": "claim", "type": "edge", "title": "Appeal status", "claim_status": "DENIED", "denial_category": "MED_NECESSITY"},
-    "PAP-03": {"anchor": "claim", "type": "edge", "title": "Appeal overturned, awaiting reprocessing", "claim_status": "DENIED",
-               "denial_category": "MED_NECESSITY"},
-    "PAP-04": {"anchor": "claim", "type": "compliance", "title": "Deadline passed", "claim_status": "DENIED",
-               "denial_category": "MED_NECESSITY"},
-    "PPI-01": {"anchor": "claim", "type": "happy", "title": "Payment date and trace", "claim_status": "PAID"},
-    "PPI-02": {"anchor": "claim", "type": "edge", "title": "Paid less than billed", "claim_status": "PAID"},
-    "PPI-03": {"anchor": "claim", "type": "edge", "title": "Recoupment offset", "claim_status": "PAID"},
-    "PPI-04": {"anchor": "claim", "type": "data", "title": "Payment to wrong TIN", "claim_status": "PAID"},
+               "claim_status": ClaimStatus.PENDED, "pend_reason": "COB_INFO"},
+    "MCI-04": {"anchor": "claim", "type": "data", "title": "Original and reprocessed claim both visible", "claim_status": ClaimStatus.PAID},
+    "PAP-01": {"anchor": "claim", "type": "happy", "title": "Start a claim appeal", "claim_status": ClaimStatus.DENIED,
+               "denial_category": DenialCategory.MED_NECESSITY},
+    "PAP-02": {"anchor": "claim", "type": "edge", "title": "Appeal status", "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.MED_NECESSITY},
+    "PAP-03": {"anchor": "claim", "type": "edge", "title": "Appeal overturned, awaiting reprocessing", "claim_status": ClaimStatus.DENIED,
+               "denial_category": DenialCategory.MED_NECESSITY},
+    "PAP-04": {"anchor": "claim", "type": "compliance", "title": "Deadline passed", "claim_status": ClaimStatus.DENIED,
+               "denial_category": DenialCategory.MED_NECESSITY},
+    "PPI-01": {"anchor": "claim", "type": "happy", "title": "Payment date and trace", "claim_status": ClaimStatus.PAID},
+    "PPI-02": {"anchor": "claim", "type": "edge", "title": "Paid less than billed", "claim_status": ClaimStatus.PAID},
+    "PPI-03": {"anchor": "claim", "type": "edge", "title": "Recoupment offset", "claim_status": ClaimStatus.PAID},
+    "PPI-04": {"anchor": "claim", "type": "data", "title": "Payment to wrong TIN", "claim_status": ClaimStatus.PAID},
 })
 
 # Claim scenarios whose recipe forces a professional, in-network, non-emergency claim
@@ -254,31 +256,31 @@ DQ_STALE_DIRECTORY = "DQ-STALE-DIRECTORY"
 DQ_STALE_SCHEDULE = "DQ-STALE-SCHEDULE"
 
 # ---------------------------------------------------------------- distributions
-LOB_PERSONA = {"MEDICARE_ADV": "MEDICARE", "MEDICAID_MCO": "MEDICAID", "COMMERCIAL": "COMMERCIAL"}
+LOB_PERSONA = {Lob.MEDICARE_ADV: "MEDICARE", Lob.MEDICAID_MCO: "MEDICAID", Lob.COMMERCIAL: "COMMERCIAL"}
 
 # D-02 age by LOB: (low, high, share)
 AGE_BANDS = {
-    "COMMERCIAL": [(0, 17, 20), (18, 44, 40), (45, 64, 36), (65, 75, 4)],
-    "MEDICARE_ADV": [(65, 90, 88), (30, 64, 12)],
-    "MEDICAID_MCO": [(0, 17, 45), (18, 64, 52), (65, 85, 3)],
+    Lob.COMMERCIAL: [(0, 17, 20), (18, 44, 40), (45, 64, 36), (65, 75, 4)],
+    Lob.MEDICARE_ADV: [(65, 90, 88), (30, 64, 12)],
+    Lob.MEDICAID_MCO: [(0, 17, 45), (18, 64, 52), (65, 85, 3)],
 }
 
 # D-06 authorization outcomes
-AUTH_OUTCOMES = (["APPROVED", "PARTIAL", "DENIED", "IN_REVIEW", "PENDED_INFO", "SUBMITTED", "WITHDRAWN"],
+AUTH_OUTCOMES = ([AuthStatus.APPROVED, AuthStatus.PARTIAL, AuthStatus.DENIED, AuthStatus.IN_REVIEW, AuthStatus.PENDED_INFO, AuthStatus.SUBMITTED, AuthStatus.WITHDRAWN],
                  [82, 4, 7, 3, 2, 1, 1])
 
 # Baseline denial categories -> CARC (group CO). AUTH (CO-197) is scenario-only.
 DENIAL_CATEGORIES = {
-    "MED_NECESSITY": ("50", "These services are not deemed medically necessary by the payer."),
-    "CODING": ("11", "The diagnosis is inconsistent with the procedure."),
-    "DUPLICATE": ("18", "Exact duplicate claim or service."),
-    "TIMELY_FILING": ("29", "The time limit for filing has expired."),
-    "COB": ("22", "This care may be covered by another payer per coordination of benefits."),
-    "NON_COVERED": ("96", "Non-covered charge."),
-    "MISSING_INFO": ("16", "Claim lacks information or has submission errors needed for adjudication."),
-    "AUTH": ("197", "Precertification/authorization was absent."),
+    DenialCategory.MED_NECESSITY: ("50", "These services are not deemed medically necessary by the payer."),
+    DenialCategory.CODING: ("11", "The diagnosis is inconsistent with the procedure."),
+    DenialCategory.DUPLICATE: ("18", "Exact duplicate claim or service."),
+    DenialCategory.TIMELY_FILING: ("29", "The time limit for filing has expired."),
+    DenialCategory.COB: ("22", "This care may be covered by another payer per coordination of benefits."),
+    DenialCategory.NON_COVERED: ("96", "Non-covered charge."),
+    DenialCategory.MISSING_INFO: ("16", "Claim lacks information or has submission errors needed for adjudication."),
+    DenialCategory.AUTH: ("197", "Precertification/authorization was absent."),
 }
-BASELINE_DENIALS = (["MED_NECESSITY", "CODING", "DUPLICATE", "TIMELY_FILING", "COB", "NON_COVERED", "MISSING_INFO"],
+BASELINE_DENIALS = ([DenialCategory.MED_NECESSITY, DenialCategory.CODING, DenialCategory.DUPLICATE, DenialCategory.TIMELY_FILING, DenialCategory.COB, DenialCategory.NON_COVERED, DenialCategory.MISSING_INFO],
                     [25, 20, 15, 10, 10, 10, 10])
 
 # ---------------------------------------------------------------- reference tables (pinned subsets)
@@ -317,26 +319,26 @@ NDC = [
 TIER_COPAY_USD = {1: 0, 2: 10, 3: 45, 4: 100, 5: 150}
 
 TAXONOMY = {
-    "PCP": [("207Q00000X", "Family Medicine"), ("207R00000X", "Internal Medicine"), ("208000000X", "Pediatrics")],
-    "SPECIALIST": [("207RC0000X", "Cardiovascular Disease"), ("207X00000X", "Orthopaedic Surgery"),
+    ProviderType.PCP: [("207Q00000X", "Family Medicine"), ("207R00000X", "Internal Medicine"), ("208000000X", "Pediatrics")],
+    ProviderType.SPECIALIST: [("207RC0000X", "Cardiovascular Disease"), ("207X00000X", "Orthopaedic Surgery"),
                    ("2085R0202X", "Diagnostic Radiology"), ("225100000X", "Physical Therapist")],
-    "FACILITY": [("282N00000X", "General Acute Care Hospital"), ("314000000X", "Skilled Nursing Facility"),
+    ProviderType.FACILITY: [("282N00000X", "General Acute Care Hospital"), ("314000000X", "Skilled Nursing Facility"),
                  ("251E00000X", "Home Health"), ("333600000X", "Pharmacy")],
 }
-FACILITY_TYPE = {"282N00000X": "HOSPITAL", "314000000X": "SNF", "251E00000X": "HOME_HEALTH", "333600000X": "PHARMACY"}
+FACILITY_TYPE = {"282N00000X": FacilityType.HOSPITAL, "314000000X": FacilityType.SNF, "251E00000X": FacilityType.HOME_HEALTH, "333600000X": FacilityType.PHARMACY}
 
 # city, state, zip, lat, lon, geo_type (approximate coordinates)
 PLACES = [
-    ("Houston", "TX", "77002", 29.756, -95.363, "URBAN"), ("Austin", "TX", "78701", 30.271, -97.743, "URBAN"),
-    ("Tyler", "TX", "75701", 32.326, -95.296, "SUBURBAN"), ("Alpine", "TX", "79830", 30.358, -103.661, "RURAL"),
-    ("Miami", "FL", "33130", 25.767, -80.205, "URBAN"), ("Tampa", "FL", "33602", 27.951, -82.458, "URBAN"),
-    ("Ocala", "FL", "34471", 29.187, -82.140, "SUBURBAN"), ("Sebring", "FL", "33870", 27.495, -81.441, "RURAL"),
-    ("Columbus", "OH", "43215", 39.962, -83.000, "URBAN"), ("Dayton", "OH", "45402", 39.759, -84.192, "SUBURBAN"),
-    ("Athens", "OH", "45701", 39.329, -82.101, "RURAL"), ("Pittsburgh", "PA", "15222", 40.441, -79.996, "URBAN"),
-    ("Lancaster", "PA", "17602", 40.038, -76.306, "SUBURBAN"), ("Wellsboro", "PA", "16901", 41.749, -77.300, "RURAL"),
-    ("Atlanta", "GA", "30303", 33.749, -84.388, "URBAN"), ("Macon", "GA", "31201", 32.841, -83.632, "SUBURBAN"),
-    ("Tifton", "GA", "31794", 31.450, -83.508, "RURAL"), ("Phoenix", "AZ", "85004", 33.448, -112.074, "URBAN"),
-    ("Flagstaff", "AZ", "86001", 35.198, -111.651, "SUBURBAN"), ("Detroit", "MI", "48226", 42.331, -83.046, "URBAN"),
+    ("Houston", "TX", "77002", 29.756, -95.363, GeoType.URBAN), ("Austin", "TX", "78701", 30.271, -97.743, GeoType.URBAN),
+    ("Tyler", "TX", "75701", 32.326, -95.296, GeoType.SUBURBAN), ("Alpine", "TX", "79830", 30.358, -103.661, GeoType.RURAL),
+    ("Miami", "FL", "33130", 25.767, -80.205, GeoType.URBAN), ("Tampa", "FL", "33602", 27.951, -82.458, GeoType.URBAN),
+    ("Ocala", "FL", "34471", 29.187, -82.140, GeoType.SUBURBAN), ("Sebring", "FL", "33870", 27.495, -81.441, GeoType.RURAL),
+    ("Columbus", "OH", "43215", 39.962, -83.000, GeoType.URBAN), ("Dayton", "OH", "45402", 39.759, -84.192, GeoType.SUBURBAN),
+    ("Athens", "OH", "45701", 39.329, -82.101, GeoType.RURAL), ("Pittsburgh", "PA", "15222", 40.441, -79.996, GeoType.URBAN),
+    ("Lancaster", "PA", "17602", 40.038, -76.306, GeoType.SUBURBAN), ("Wellsboro", "PA", "16901", 41.749, -77.300, GeoType.RURAL),
+    ("Atlanta", "GA", "30303", 33.749, -84.388, GeoType.URBAN), ("Macon", "GA", "31201", 32.841, -83.632, GeoType.SUBURBAN),
+    ("Tifton", "GA", "31794", 31.450, -83.508, GeoType.RURAL), ("Phoenix", "AZ", "85004", 33.448, -112.074, GeoType.URBAN),
+    ("Flagstaff", "AZ", "86001", 35.198, -111.651, GeoType.SUBURBAN), ("Detroit", "MI", "48226", 42.331, -83.046, GeoType.URBAN),
 ]
 
 FIRST_F = ["Maria", "Linda", "Patricia", "Barbara", "Elizabeth", "Jennifer", "Susan", "Dorothy", "Carmen", "Rosa",

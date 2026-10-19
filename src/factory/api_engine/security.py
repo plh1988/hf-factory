@@ -10,19 +10,15 @@ import secrets
 import time
 from collections import defaultdict, deque
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from factory.adapters.ports import Stores
+from factory.api_engine.errors import ErrorCode, error, error_body
 
 TOKEN_TTL_S = 3600
-
-
-def error(status: int, code: str, message: str) -> HTTPException:
-    """The API's error shape: {error, message, is_synthetic}."""
-    return HTTPException(status_code=status, detail={"error": code, "message": message, "is_synthetic": True})
 
 
 class ClientRegistry:
@@ -42,7 +38,7 @@ class ClientRegistry:
     def issue(self, client_id: str, client_secret: str) -> str:
         """Client-credentials grant: check id and secret (constant time) and issue a random bearer token valid for 1 hour."""
         if not (secrets.compare_digest(client_id, self.client_id) and secrets.compare_digest(client_secret, self.secret)):
-            raise error(401, "INVALID_CLIENT", "Unknown client or wrong secret.")
+            raise error(ErrorCode.INVALID_CLIENT, "Unknown client or wrong secret.")
         token = secrets.token_urlsafe(24)
         self.tokens[token] = (client_id, time.time() + TOKEN_TTL_S)
         return token
@@ -51,7 +47,7 @@ class ClientRegistry:
         """Client id of a valid, unexpired token, else 401. Tokens are held in memory, per process."""
         found = self.tokens.get(token)
         if not found or found[1] < time.time():
-            raise error(401, "INVALID_TOKEN", "Missing, unknown or expired bearer token.")
+            raise error(ErrorCode.INVALID_TOKEN, "Missing, unknown or expired bearer token.")
         return found[0]
 
 
@@ -66,7 +62,7 @@ class RateLimiter:
         while q and q[0] < now - 60:
             q.popleft()
         if len(q) >= self.per_minute:
-            raise error(429, "RATE_LIMITED", f"Limit is {self.per_minute} requests per minute per client.")
+            raise error(ErrorCode.RATE_LIMITED, f"Limit is {self.per_minute} requests per minute per client.")
         q.append(now)
 
 
@@ -76,7 +72,7 @@ bearer = HTTPBearer(auto_error=False)
 def require_client(request: Request, cred: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:
     """FastAPI dependency on every /v1 endpoint: valid bearer token, then the rate limit. Returns the client id."""
     if cred is None:
-        raise error(401, "INVALID_TOKEN", "Missing bearer token.")
+        raise error(ErrorCode.INVALID_TOKEN, "Missing bearer token.")
     client = request.app.state.clients.client_for(cred.credentials)
     request.app.state.limiter.check(client)
     return client
@@ -95,8 +91,8 @@ class FaultInjection(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if self.enabled and request.url.path.startswith("/v1/") and request.headers.get("x-fault-injection") != "off":
             if self.rng.random() < self.error_rate:
-                return JSONResponse({"error": "INJECTED_FAULT", "message": "Simulated upstream failure.", "is_synthetic": True},
-                                    status_code=503)
+                return JSONResponse(error_body(ErrorCode.INJECTED_FAULT, "Simulated upstream failure."),
+                                    status_code=ErrorCode.INJECTED_FAULT.status)
             if self.rng.random() < 0.05:  # the slow tail: ~5% of calls near the p95 target
                 await asyncio.sleep(self.latency_s)
         return await call_next(request)

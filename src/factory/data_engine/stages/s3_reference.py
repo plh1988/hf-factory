@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pyarrow as pa
 
+from factory.codes import GeoType, Lob, PanelStatus, ParticipationStatus, ProviderStatus, ProviderType
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.rng import money
@@ -14,9 +15,9 @@ from factory.data_engine.rng import money
 N_PLANS = 4
 
 PLAN_TERMS = {  # lob -> (network types, deductibles, oop_max, copay_pcp, copay_spec, coinsurance)
-    "MEDICARE_ADV": (["HMO", "PPO"], [0, 250], [3900, 6700], [0, 10], [35, 45], 20),
-    "COMMERCIAL": (["PPO", "EPO"], [1500, 3200], [6000, 7500], [25, 30], [50, 60], 20),
-    "MEDICAID_MCO": (["HMO", "HMO"], [0, 0], [0, 0], [0, 0], [0, 0], 0),
+    Lob.MEDICARE_ADV: (["HMO", "PPO"], [0, 250], [3900, 6700], [0, 10], [35, 45], 20),
+    Lob.COMMERCIAL: (["PPO", "EPO"], [1500, 3200], [6000, 7500], [25, 30], [50, 60], 20),
+    Lob.MEDICAID_MCO: (["HMO", "HMO"], [0, 0], [0, 0], [0, 0], [0, 0], 0),
 }
 
 
@@ -37,7 +38,7 @@ def luhn_npi(base9: np.ndarray) -> list[str]:
     return out
 
 
-DEFAULT_LOB_CYCLE = ["MEDICARE_ADV", "COMMERCIAL", "MEDICAID_MCO"]
+DEFAULT_LOB_CYCLE = [Lob.MEDICARE_ADV, Lob.COMMERCIAL, Lob.MEDICAID_MCO]
 
 
 def n_plans(ctx: GenContext) -> int:
@@ -77,7 +78,7 @@ def gen_plans(ctx: GenContext) -> pa.Table:
         rows["copay_specialist"].append(cs[i % 2] * 100)
         rows["coinsurance_pct"].append(co)
     allowances = [
-        json.dumps({"OTC_quarterly": 100, "dental_annual": 1500, "vision_annual": 200, "transport_rides_annual": 24} if lob != "COMMERCIAL" else {})
+        json.dumps({"OTC_quarterly": 100, "dental_annual": 1500, "vision_annual": 200, "transport_rides_annual": 24} if lob != Lob.COMMERCIAL else {})
         for lob in lobs
     ]
     return ctx.write("plan", {
@@ -108,8 +109,8 @@ def gen_providers(ctx: GenContext) -> pa.Table:
     n = int(ctx.spec.volumes["providers"])
     keys = np.arange(n)
     rr = ctx.rr("provider", keys)
-    ptype = rr.choice("type", ["PCP", "SPECIALIST", "FACILITY"], [35, 50, 15])
-    ptype[:4] = "FACILITY"  # rows 0-3: one hospital, SNF, home health and pharmacy, even in tiny datasets
+    ptype = rr.choice("type", [ProviderType.PCP, ProviderType.SPECIALIST, ProviderType.FACILITY], [35, 50, 15])
+    ptype[:4] = ProviderType.FACILITY  # rows 0-3: one hospital, SNF, home health and pharmacy, even in tiny datasets
     tax_idx = rr.integers("taxonomy", 0, 4)
     taxonomy, specialty, facility_type = [], [], []
     for i, (t, k) in enumerate(zip(ptype, tax_idx)):
@@ -118,7 +119,7 @@ def gen_providers(ctx: GenContext) -> pa.Table:
         taxonomy.append(code)
         specialty.append(name)
         facility_type.append(catalog.FACILITY_TYPE.get(code))
-    is_org = ptype == "FACILITY"
+    is_org = ptype == ProviderType.FACILITY
     gender = rr.choice("gender", ["F", "M", "X"], [48, 50, 2])
     first = np.where(gender == "F", rr.choice("first_f", catalog.FIRST_F), rr.choice("first_m", catalog.FIRST_M))
     last = rr.choice("last", catalog.LAST)
@@ -126,7 +127,7 @@ def gen_providers(ctx: GenContext) -> pa.Table:
     org_name = [f"{catalog.PLACES[p][0]} {s}" for p, s in zip(place, specialty)]
     langs = [["EN"] + (["ES"] if es else []) + (["ZH"] if zh else [])
              for es, zh in zip(rr.bernoulli("lang_es", 0.25), rr.bernoulli("lang_zh", 0.05))]
-    status = rr.choice("status", ["ACTIVE", "TERMED", "SUSPENDED"], [95, 3, 2])
+    status = rr.choice("status", [ProviderStatus.ACTIVE, ProviderStatus.TERMED, ProviderStatus.SUSPENDED], [95, 3, 2])
     return ctx.write("provider", {
         "npi": pa.array(luhn_npi(190000000 + keys * 7)),
         "provider_type": pa.array(list(ptype)),
@@ -158,14 +159,14 @@ def gen_participation(ctx: GenContext, providers: pa.Table, plans: pa.Table) -> 
     rr = ctx.rr("network_participation", keys)
     pstatus = np.array(providers["status"].to_pylist(), dtype=object)[pi]
     ptype = np.array(providers["provider_type"].to_pylist(), dtype=object)[pi]
-    status = rr.choice("status", ["PARTICIPATING", "NON_PARTICIPATING", "PENDING_ONBOARDING", "TERMED"], [85, 6, 4, 5])
-    status = np.where(pstatus == "TERMED", "TERMED", status)
+    status = rr.choice("status", [ParticipationStatus.PARTICIPATING, ParticipationStatus.NON_PARTICIPATING, ParticipationStatus.PENDING_ONBOARDING, ParticipationStatus.TERMED], [85, 6, 4, 5])
+    status = np.where(pstatus == ProviderStatus.TERMED, ParticipationStatus.TERMED, status)
     eff = ctx.as_of - rr.integers("eff", 400, 5 * 365).astype("timedelta64[D]")
-    term = np.where(status == "TERMED", ctx.as_of - rr.integers("term", 30, 300).astype("timedelta64[D]"),
+    term = np.where(status == ParticipationStatus.TERMED, ctx.as_of - rr.integers("term", 30, 300).astype("timedelta64[D]"),
                     np.datetime64("NaT", "D"))
-    panel = np.where(ptype == "PCP", rr.choice("panel", ["OPEN", "LIMITED", "CLOSED"], [75, 15, 10]), "OPEN")
-    stage = np.where(status == "PARTICIPATING", "LIVE",
-                     np.where(status == "PENDING_ONBOARDING",
+    panel = np.where(ptype == ProviderType.PCP, rr.choice("panel", [PanelStatus.OPEN, PanelStatus.LIMITED, PanelStatus.CLOSED], [75, 15, 10]), PanelStatus.OPEN)
+    stage = np.where(status == ParticipationStatus.PARTICIPATING, "LIVE",
+                     np.where(status == ParticipationStatus.PENDING_ONBOARDING,
                               rr.choice("stage", ["APP_RECEIVED", "DOCS_PENDING", "CONTRACT_SENT"]), None))
     pending = [["W9", "CONTRACT"] if s == "DOCS_PENDING" else (["CONTRACT"] if s == "CONTRACT_SENT" else [])
                for s in stage]
@@ -246,7 +247,7 @@ def gen_access_standards(ctx: GenContext, plans: pa.Table) -> None:
         "standard_id": pa.array(ctx.ids("access_standard", keys)),
         "plan_id": pa.array([plan_ids[pi] for pi, _, _ in rows]),
         "provider_type_or_specialty": pa.array([ACCESS_RULES[ri][0] for _, ri, _ in rows]),
-        "geo_type": pa.array([("URBAN", "SUBURBAN", "RURAL")[gi] for _, _, gi in rows]),
+        "geo_type": pa.array([(GeoType.URBAN, GeoType.SUBURBAN, GeoType.RURAL)[gi] for _, _, gi in rows]),
         "max_distance_miles": pa.array([ACCESS_RULES[ri][1][gi] for _, ri, gi in rows], pa.int32()),
         "max_wait_days": pa.array([ACCESS_RULES[ri][2] for _, ri, _ in rows], pa.int32()),
     })
@@ -274,7 +275,7 @@ def gen_schedules(ctx: GenContext, providers: pa.Table, locations: pa.Table) -> 
     """Weekday hours per practice location of individual providers; 10% stale (next slot in a blackout, MAS-04)."""
     ptype = dict(zip(providers["npi"].to_pylist(), providers["provider_type"].to_pylist()))
     loc_rows = [(i, lid, npi) for i, (lid, npi) in enumerate(zip(locations["location_id"].to_pylist(), locations["npi"].to_pylist()))
-                if ptype.get(npi) in ("PCP", "SPECIALIST")]
+                if ptype.get(npi) in (ProviderType.PCP, ProviderType.SPECIALIST)]
     lrr = ctx.rr("availability_schedule:location", np.array([i for i, _, _ in loc_rows], dtype=np.int64))
     n_days = 5 + lrr.bernoulli("saturday", 0.2).astype(int)
     li = np.repeat(np.arange(len(loc_rows)), n_days)

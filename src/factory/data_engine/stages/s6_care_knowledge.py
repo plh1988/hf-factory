@@ -13,6 +13,7 @@ import pyarrow as pa
 
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext, dates, stamps
+from factory.data_engine.keys import claim_key_from_number
 from factory.data_engine.knowledge_catalog import USE_CASE_ORDER, AssetSpec, asset_specs
 
 DAY = np.timedelta64(1, "D")
@@ -35,7 +36,7 @@ def gen_care(ctx: GenContext) -> None:
            FROM claim_header WHERE bill_type = '0111' ORDER BY claim_number"""
     )
     rows = t.to_pylist()
-    keys = np.array([(int(r["claim_number"][4:11]) - 1) * 64 + int(r["claim_number"][12:]) for r in rows], dtype=np.int64)
+    keys = np.array([claim_key_from_number(r["claim_number"]) for r in rows], dtype=np.int64)  # same key as the claim
     rr = ctx.rr("transition_of_care", keys)
     admit = np.array([np.datetime64(r["service_from_dt"], "D") for r in rows], dtype="datetime64[D]")
     discharge = np.array([np.datetime64(r["service_to_dt"], "D") for r in rows], dtype="datetime64[D]")

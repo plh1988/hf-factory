@@ -14,7 +14,9 @@ from typing import Any, Callable
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from factory import codes
 from factory.adapters.ports import Stores
+from factory.api_engine.errors import ErrorCode
 from factory.contracts import ApiJob
 
 NO_FAULTS = {"x-fault-injection": "off"}
@@ -88,8 +90,8 @@ def _status(code: int):
     return lambda r: r.status_code == code
 
 
-def _error(code: int, err: str):
-    return lambda r: r.status_code == code and r.json().get("error") == err
+def _error(code: ErrorCode):
+    return lambda r: r.status_code == code.status and r.json().get("error") == code
 
 
 ACTIVE_MEMBER = ("SELECT m.member_number, m.member_id FROM member_demographics m JOIN plan_enrollment e ON e.member_id = m.member_id "
@@ -103,7 +105,7 @@ def ct_pcs(t: Suite) -> None:
     p = t.prov(c["billing_npi"])
     q = f"?npi={p['npi']}&tin={p['tin']}"
     t.add(ep, "paid claim returns status and payment", t.get(f"/claims/{c['claim_number']}/status{q}"),
-          lambda r: r.status_code == 200 and r.json()["status"] == "PAID")
+          lambda r: r.status_code == 200 and r.json()["status"] == codes.ClaimStatus.PAID)
     t.add(ep, "unknown claim is 404", t.get(f"/claims/CLM-9999999-99/status{q}"), _status(404))
     t.add(ep, "no token is 401", t.get(f"/claims/{c['claim_number']}/status{q}", auth=False), _status(401))
     pend = t.one("SELECT claim_number, billing_npi FROM claim_header WHERE scenario_id = 'PCS-02' ORDER BY claim_number")
@@ -113,7 +115,7 @@ def ct_pcs(t: Suite) -> None:
               lambda r: r.status_code == 200 and r.json()["pend_reason"] == "RECORDS_REQUEST")
     else:
         t.add(ep, "PCS-04 wrong TIN is refused (403)", t.get(f"/claims/{c['claim_number']}/status?npi={p['npi']}&tin={BAD_TIN}"),
-              _error(403, "VERIFICATION_FAILED"))
+              _error(ErrorCode.VERIFICATION_FAILED))
 
 
 def ct_pas(t: Suite) -> None:
@@ -172,7 +174,7 @@ def ct_mbn(t: Suite) -> None:
                "WHERE f.caregiver_flag AND f.scenario_id = 'MPC-04' ORDER BY f.relationship_id")
     if cg:
         t.add(ep, "caregiver without BENEFITS scope is refused (R-06)",
-              t.get(f"/members/{cg['member_number']}/benefits?on_behalf_of={cg['relationship_id']}"), _error(403, "SCOPE_NOT_AUTHORIZED"))
+              t.get(f"/members/{cg['member_number']}/benefits?on_behalf_of={cg['relationship_id']}"), _error(ErrorCode.SCOPE_NOT_AUTHORIZED))
     else:
         t.add(ep, "unknown caregiver is refused", t.get(f"/members/{mid}/benefits?on_behalf_of=nobody"), _status(403))
     ep = f"GET {t.base}/members/{{member_id}}/accumulators"
@@ -200,7 +202,7 @@ def ct_mci(t: Suite) -> None:
                                                      for x in r.json()["claims"]))
     else:
         t.add(ep, "status filter returns only that status", t.get(f"/members/{mid}/claims?status=paid"),
-              lambda r: r.status_code == 200 and all(x["status"] == "PAID" for x in r.json()["claims"]))
+              lambda r: r.status_code == 200 and all(x["status"] == codes.ClaimStatus.PAID for x in r.json()["claims"]))
     ep = f"GET {t.base}/claims/{{claim_id}}"
     t.add(ep, "claim detail with EOB math", t.get(f"/claims/{c['claim_number']}?member_id={mid}"),
           lambda r: r.status_code == 200 and "You owe" in r.json()["member_owes_explained"] and r.json()["lines"])
@@ -228,7 +230,7 @@ def ct_mps(t: Suite) -> None:
     if rural:
         t.add(ep, "MPS-02 Spanish pediatrician, rural: widens or finds within standard",
               t.get(f"/providers/search?specialty=pediatrics&language=es&member_id={rural['member_number']}"),
-              lambda r: r.status_code == 200 and r.json()["access_standard"]["geo_type"] == "RURAL"
+              lambda r: r.status_code == 200 and r.json()["access_standard"]["geo_type"] == codes.GeoType.RURAL
               and (r.json()["results_within_radius"] > 0 or r.json()["access_gap_logged"]))
     else:
         t.add(ep, "location is required (422)", t.get("/providers/search?specialty=cardiology"), _status(422))
@@ -269,7 +271,7 @@ def ct_mpc(t: Suite) -> None:
     if cg:
         t.add(ep, "MPC-04 caregiver without PCP_CHANGE scope is refused",
               t.put(f"/members/{cg['member_number']}/pcp?dry_run=true&on_behalf_of={cg['relationship_id']}", {"npi": new_pcp or "1234567890"}),
-              _error(403, "SCOPE_NOT_AUTHORIZED"))
+              _error(ErrorCode.SCOPE_NOT_AUTHORIZED))
     else:
         spec = t.one("SELECT npi FROM provider WHERE provider_type = 'SPECIALIST' ORDER BY npi")
         t.add(ep, "a specialist cannot be a PCP (409)", t.put(f"/members/{mid}/pcp?dry_run=true", {"npi": spec["npi"]}), _status(409))
@@ -303,7 +305,7 @@ def ct_mas(t: Suite) -> None:
             t.add(ep, "book an open slot (dry run)", t.post("/appointments?dry_run=true", body),
                   lambda r: r.status_code == 201 and r.json()["status"] == "VALIDATED")
             t.add(ep, "a time that is not an open slot is 409",
-                  t.post("/appointments?dry_run=true", {**body, "start": "2000-01-01T09:00:00"}), _error(409, "SLOT_UNAVAILABLE"))
+                  t.post("/appointments?dry_run=true", {**body, "start": "2000-01-01T09:00:00"}), _error(ErrorCode.SLOT_UNAVAILABLE))
             booked = True
     body = {"member_id": m["member_number"] if m else "MBR-0000001", "npi": "1999999999", "location_id": "x",
             "start": "2030-01-01T09:00:00", "visit_type": "SICK"}
@@ -324,7 +326,7 @@ def ct_pap(t: Suite) -> None:
                   "WHERE a.status <> 'DECIDED' ORDER BY a.appeal_number")
     any_c = c or open_ or t.one("SELECT claim_number, billing_npi FROM claim_header ORDER BY claim_number")
     p = t.prov(any_c["billing_npi"])
-    body = {"level": "L1", "reason": "MED_NECESSITY", "documents": ["doc-1"], "npi": p["npi"], "tin": p["tin"]}
+    body = {"level": "L1", "reason": codes.DenialCategory.MED_NECESSITY, "documents": ["doc-1"], "npi": p["npi"], "tin": p["tin"]}
     if c:
         t.add(ep, "appeal an appealable denial (dry run)", t.post(f"/claims/{c['claim_number']}/appeals?dry_run=true", body),
               lambda r: r.status_code == 201 and r.json()["status"] == "VALIDATED")
@@ -334,12 +336,12 @@ def ct_pap(t: Suite) -> None:
         po = t.prov(open_["billing_npi"])
         t.add(ep, "PAP-02 an open appeal blocks a second one (409)",
               t.post(f"/claims/{open_['claim_number']}/appeals?dry_run=true", {**body, "npi": po["npi"], "tin": po["tin"]}),
-              _error(409, "APPEAL_EXISTS"))
+              _error(ErrorCode.APPEAL_EXISTS))
     paid = t.one("SELECT claim_number, billing_npi FROM claim_header WHERE status = 'PAID' ORDER BY claim_number")
     while len([x for x in t.tests if x[0] == ep]) < 4:
         pp = t.prov(paid["billing_npi"])
         t.add(ep, "a paid claim cannot be appealed (409)",
-              t.post(f"/claims/{paid['claim_number']}/appeals?dry_run=true", {**body, "npi": pp["npi"], "tin": pp["tin"]}), _error(409, "NOT_DENIED"))
+              t.post(f"/claims/{paid['claim_number']}/appeals?dry_run=true", {**body, "npi": pp["npi"], "tin": pp["tin"]}), _error(ErrorCode.NOT_DENIED))
     ep = f"GET {t.base}/appeals/{{appeal_id}}"
     a = t.one("SELECT a.appeal_number, h.billing_npi FROM appeal_record a JOIN claim_header h ON h.claim_id = a.claim_id "
               "WHERE a.scenario_id IN ('PAP-02', 'BASE') ORDER BY a.appeal_number")
