@@ -21,6 +21,7 @@ import numpy as np
 
 from factory.codes import ClaimStatus, ClaimType, DenialCategory, NetworkStatus, ProviderRole, ProviderType
 from factory.data_engine import catalog, keys
+from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext
 from factory.data_engine.rng import RowRandom
 from factory.data_engine.stages.s5.inputs import (
@@ -139,13 +140,13 @@ def _types_and_dates(ctx: GenContext, c: ClaimBatch) -> None:
     crr, scen, span, ci = c.crr, c.scen, c.span, c.ci
     ctype = crr.choice("type", [ClaimType.PHARMACY, ClaimType.PROFESSIONAL, ClaimType.FACILITY], [40, 45, 15])
     # forced scenarios (e.g. PCS-02, MCI-02, PAP-02) need a clean professional, in-network, non-emergency claim
-    c.forced = forced = np.isin(scen, sorted(catalog.FORCED_CLAIM_SCENARIOS))
+    c.forced = forced = recipes.tagged(scen, lambda s: s.anchor == "claim" and s.forced)
     c.ctype = ctype = np.where(forced, ClaimType.PROFESSIONAL, ctype)
     c.inpatient = inpatient = (ctype == ClaimType.FACILITY) & crr.bernoulli("inpatient", 0.6)
     los = np.where(inpatient, crr.integers("los", 2, 7), 0)
     c.los = los = np.minimum(los, np.maximum(span[ci], 0))
     s_from = c.w_start[ci] + np.floor(crr.u("dos") * (span[ci] - los + 1)).astype("timedelta64[D]")
-    early = np.isin(scen, ["PAP-02", "PAP-03", "PAP-04"])  # appeals need time to be filed or decided
+    early = recipes.tagged(scen, lambda s: s.appeal)  # appeals need time to be filed or decided
     c.s_from = s_from = np.where(early, c.w_start[ci], s_from)
     c.s_to = s_from + los.astype("timedelta64[D]")
     # T-02: service <= received <= adjudicated <= paid, never after as_of; claims not yet adjudicated stay RECEIVED
@@ -171,7 +172,7 @@ def _assign_providers(inp: Inputs, c: ClaimBatch) -> None:
         billing[mask], in_net[mask] = pick_provider(inp, plan_ids[mask], r, in_net[mask], crr.u(f"billing:{r}")[mask],
                                                     with_network=True)
     rendering = np.where(ctype == ClaimType.PROFESSIONAL, billing, None)
-    rendering = np.where(c.scen == "PCS-03", None, rendering)  # CO-16: missing rendering NPI
+    rendering = np.where(recipes.tagged(c.scen, lambda s: s.missing_rendering_npi), None, rendering)  # CO-16
     attending = pick_provider(inp, plan_ids, ProviderRole.SPECIALIST, in_net, crr.u("attending"))
     c.billing = billing
     c.facility = np.where(ctype == ClaimType.FACILITY, billing, None)
@@ -188,21 +189,24 @@ def _assign_status(ctx: GenContext, c: ClaimBatch) -> None:
     status = np.where(deny, ClaimStatus.DENIED, np.where(pend, ClaimStatus.PENDED, ClaimStatus.PAID)).astype(object)
     denial_cat = crr.choice("denial_cat", *catalog.BASELINE_DENIALS).astype(object)
     pend_reason = np.full(n, None, dtype=object)
-    for sid in catalog.FORCED_CLAIM_SCENARIOS:  # scenario recipes override the baseline draws
-        mask = scen == sid
+    for recipe in recipes.SCENARIOS.values():  # forced claim recipes override the baseline draws
+        if recipe.anchor != "claim" or not recipe.forced:
+            continue
+        mask = scen == recipe.id
         if not mask.any():
             continue
-        recipe = catalog.SCENARIOS[sid]
-        status[mask] = recipe["claim_status"]
-        if "denial_category" in recipe:
-            denial_cat[mask] = recipe["denial_category"]
-        if "pend_reason" in recipe:
-            pend_reason[mask] = recipe["pend_reason"]
+        status[mask] = recipe.claim_status
+        if recipe.denial_category is not None:
+            denial_cat[mask] = recipe.denial_category
+        if recipe.pend_reason is not None:
+            pend_reason[mask] = recipe.pend_reason
     status[c.in_process] = ClaimStatus.RECEIVED
-    required = np.array([catalog.SCENARIOS[x]["claim_status"] if x in catalog.HAPPY_CLAIM_SCENARIOS else "" for x in scen], dtype=object)
+    happy = recipes.HAPPY_CLAIM_SCENARIOS
+    required = np.array([recipes.SCENARIOS[x].claim_status if x in happy else "" for x in scen], dtype=object)
     # happy-path tags are not forced: they stay only on claims that ended in the recipe's status (keeps the denial rate)
-    happy_unmet = np.isin(scen, sorted(catalog.HAPPY_CLAIM_SCENARIOS)) & (status != required)
-    happy_unmet |= (scen == "PAP-01") & (np.isin(denial_cat, [DenialCategory.DUPLICATE, DenialCategory.AUTH]) | (c.ctype == ClaimType.PHARMACY))
+    happy_unmet = np.isin(scen, sorted(happy)) & (status != required)
+    not_appealable = np.isin(denial_cat, [DenialCategory.DUPLICATE, DenialCategory.AUTH]) | (c.ctype == ClaimType.PHARMACY)
+    happy_unmet |= recipes.tagged(scen, lambda s: s.fresh_appeal) & not_appealable
     c.scen = np.where(c.in_process | happy_unmet, "BASE", scen)
     c.edge = c.forced & ~c.in_process
     c.paid_dt = np.where(status == ClaimStatus.PAID,
@@ -229,7 +233,8 @@ def _draw_lines(ctx: GenContext, c: ClaimBatch) -> None:
     prof = lt == ClaimType.PROFESSIONAL
     cpt[prof & first] = lrr.choice("office", OFFICE)[prof & first]
     cpt[prof & ~first] = lrr.choice("ancillary", ANCILLARY)[prof & ~first]
-    pa_line = first & (needs_pa_prof[li] | (scen[li] == "MCI-02"))  # MCI-02: PA code billed without an auth
+    no_auth = recipes.tagged(scen, lambda s: s.pa_code_without_auth)  # PA code billed without an auth
+    pa_line = first & (needs_pa_prof[li] | no_auth[li])
     cpt[pa_line] = lrr.choice("pa_code", PROF_PA)[pa_line]
     fac = lt == ClaimType.FACILITY
     cpt[fac] = lrr.choice("inpatient", INPATIENT)[fac]

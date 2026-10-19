@@ -16,12 +16,13 @@ import pyarrow as pa
 
 from factory.codes import AppealOutcome, AppealStatus, ClaimStatus, ClaimType, DenialCategory, Lob, NetworkStatus
 from factory.data_engine import catalog, keys
+from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.rng import money
 from factory.data_engine.stages.s5.claims import ClaimBatch
 from factory.data_engine.stages.s5.inputs import DAY, DRUGS_NO_PA, NAT, Inputs
 
-PAP_EDGE = ["PAP-02", "PAP-03", "PAP-04"]
+APPEAL_SCENARIOS = recipes.ids(lambda s: s.appeal)  # claims that must carry a specific appeal
 
 
 # ------------------------------------------------------------------ planners
@@ -53,46 +54,48 @@ def plan_appeals(ctx: GenContext, c: ClaimBatch) -> Appeals:
     lob = c.m["lob"][c.ci]
     deadline_days = np.where(lob == Lob.COMMERCIAL, 180, 60)
     appealable = (status == ClaimStatus.DENIED) & (cat != DenialCategory.DUPLICATE) & (cat != DenialCategory.AUTH)
-    other_scenario = np.isin(scen, sorted((catalog.FORCED_CLAIM_SCENARIOS | {"PAP-01"}) - set(PAP_EDGE)))
-    pick = appealable & ((c.crr.bernoulli("appeal", 0.12) & ~other_scenario) | np.isin(scen, PAP_EDGE))
+    # claims of other forced recipes, and fresh-appeal claims, never get a baseline appeal
+    other_scenario = recipes.tagged(scen, lambda s: ((s.anchor == "claim" and s.forced) or s.fresh_appeal) and not s.appeal)
+    pick = appealable & ((c.crr.bernoulli("appeal", 0.12) & ~other_scenario) | np.isin(scen, APPEAL_SCENARIOS))
     ap = np.where(pick)[0]
     arr = ctx.rr("appeal_record", c.ckey[ap])
     adjud = c.adjud[ap]
     deadline = adjud + deadline_days[ap].astype("timedelta64[D]")
     sc = scen[ap]
     filed = adjud + arr.integers("file_lag", 3, 26).astype("timedelta64[D]")
-    filed = np.where(sc == "PAP-04", deadline + arr.integers("late", 3, 21).astype("timedelta64[D]"), filed)
+    late = recipes.tagged(sc, lambda s: s.appeal and s.appeal.late_filing)
+    filed = np.where(late, deadline + arr.integers("late", 3, 21).astype("timedelta64[D]"), filed)
     st = arr.choice("status", [AppealStatus.OPEN, AppealStatus.IN_REVIEW, AppealStatus.DECIDED], [40, 40, 20]).astype(object)
     outcome = np.where(st == AppealStatus.DECIDED, arr.choice("outcome", [AppealOutcome.UPHELD, AppealOutcome.OVERTURNED], [60, 40]), None).astype(object)
-    st[sc == "PAP-02"], outcome[sc == "PAP-02"] = AppealStatus.IN_REVIEW, None
-    st[sc == "PAP-03"], outcome[sc == "PAP-03"] = AppealStatus.DECIDED, AppealOutcome.OVERTURNED
-    st[sc == "PAP-04"], outcome[sc == "PAP-04"] = AppealStatus.OPEN, None
+    for s in recipes.having("appeal"):
+        m = sc == s.id
+        st[m], outcome[m] = s.appeal.status, s.appeal.outcome
     decision = np.where(st == AppealStatus.DECIDED, filed + arr.integers("dec_lag", 5, 30).astype("timedelta64[D]"), NAT)
     ok = filed <= ctx.as_of
     ok &= np.isnat(decision) | (decision <= ctx.as_of)
     # a scenario that cannot fit before the as-of date falls back to a baseline denial
-    c.scen[ap[~ok & np.isin(sc, PAP_EDGE)]] = "BASE"
+    c.scen[ap[~ok & np.isin(sc, APPEAL_SCENARIOS)]] = recipes.BASE
     keep = np.where(ok)[0]
     return Appeals(pos=ap[keep], keys=c.ckey[ap[keep]], filed=filed[keep], deadline=deadline[keep],
                    status=st[keep], outcome=outcome[keep], decision=decision[keep])
 
 
 def plan_reprocessing(ctx: GenContext, c: ClaimBatch, appeals: Appeals) -> Reprocessing:
-    """Overturned baseline appeals (APPEAL_OVERTURN) and MCI-04 corrections of paid claims (PROVIDER_CORRECTION).
-    PAP-03 stays 'awaiting reprocessing'."""
+    """Overturned appeals (APPEAL_OVERTURN) and recipe corrections of paid claims (MCI-04: PROVIDER_CORRECTION).
+    Appeals whose recipe is awaiting reprocessing (PAP-03) get no replacement yet."""
     scen = c.scen
     over = appeals.outcome == AppealOutcome.OVERTURNED
     a_pos, a_dec = appeals.pos[over], appeals.decision[over]
-    awaiting = scen[a_pos] == "PAP-03"
+    awaiting = recipes.tagged(scen[a_pos], lambda s: s.appeal and s.appeal.awaiting_reprocessing)
     a_pos, a_dec = a_pos[~awaiting], a_dec[~awaiting]
     a_dt = a_dec + 2 * DAY
-    m_pos = np.where((scen == "MCI-04") & (c.status == ClaimStatus.PAID))[0]
+    m_pos = np.where(recipes.tagged(scen, lambda s: s.reprocess == "PROVIDER_CORRECTION") & (c.status == ClaimStatus.PAID))[0]
     m_dt = c.paid_dt[m_pos] + 3 * DAY
     pos = np.concatenate([a_pos, m_pos]).astype(np.int64)
     when = np.concatenate([a_dt, m_dt]).astype("datetime64[D]")
     trigger = np.array(["APPEAL_OVERTURN"] * len(a_pos) + ["PROVIDER_CORRECTION"] * len(m_pos), dtype=object)
     ok = when < ctx.as_of
-    c.scen[pos[~ok & (trigger == "PROVIDER_CORRECTION")]] = "BASE"
+    c.scen[pos[~ok & (trigger == "PROVIDER_CORRECTION")]] = recipes.BASE
     return Reprocessing(pos=pos[ok], when=when[ok], trigger=trigger[ok])
 
 
@@ -343,9 +346,9 @@ def _write_payments(ctx: GenContext, inp: Inputs, c: ClaimBatch, rep: Replacemen
     py = np.where(c.status == ClaimStatus.PAID)[0]
     yrr = ctx.rr("claim_payment", c.ckey[py])
     payee = np.array([inp.tin[b] for b in c.billing[py]], dtype=object)
-    wrong = scen[py] == "PPI-04"  # payee TIN differs from the billing group
+    wrong = recipes.tagged(scen[py], lambda s: s.payment == "WRONG_PAYEE")  # payee TIN differs from the billing group
     payee[wrong] = [f"9{(int(t[1:]) + 1234567) % 100000000:08d}" for t in payee[wrong]]
-    recoup = scen[py] == "PPI-03"
+    recoup = recipes.tagged(scen[py], lambda s: s.payment == "RECOUPMENT")
     traces = np.array([f"TRN{int(k):012d}" for k in c.ckey[py]], dtype=object)
     r_traces = [f"TRN{int(k):012d}" for k in rep.r_ckey]
     ctx.write("claim_payment", {

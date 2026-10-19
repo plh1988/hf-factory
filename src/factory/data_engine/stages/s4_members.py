@@ -16,6 +16,7 @@ import pyarrow as pa
 
 from factory.codes import EnrollmentStatus, GeoType, Lob, PcpAssignmentStatus
 from factory.data_engine import catalog, keys
+from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext, dates
 from factory.data_engine.rng import RowRandom
 
@@ -147,14 +148,14 @@ def _write_demographics(ctx: GenContext, b: MemberBatch) -> None:
         geo = rr.choice("geo", list(geo_mix), list(geo_mix.values()))
     else:
         geo = np.array([catalog.PLACES[i][5] for i in rr.integers("geo_place", 0, len(catalog.PLACES))], dtype=object)
-    geo = np.where(scen == "MPS-02", GeoType.RURAL, geo)
+    geo = recipes.override(np.array(geo, dtype=object), scen, "geo_type")
     by_geo = {g: [i for i, pl in enumerate(catalog.PLACES) if pl[5] == g] for g in (GeoType.URBAN, GeoType.SUBURBAN, GeoType.RURAL)}
     u_place = rr.u("place")
     place_idx = np.array([by_geo[g][min(int(u * len(by_geo[g])), len(by_geo[g]) - 1)] for g, u in zip(geo, u_place)], dtype=np.int64)
     places = [catalog.PLACES[p] for p in place_idx]
     lang_mix = dist.get("language_mix") or {"EN": 85, "ES": 10, "OTHER": 5}
     lang = rr.choice("lang", list(lang_mix), list(lang_mix.values()))
-    lang = np.where(scen == "MPS-02", "ES", lang)
+    lang = recipes.override(np.array(lang, dtype=object), scen, "language")
     channel = rr.choice("channel", ["VOICE", "CHAT", "SMS"], [55, 30, 15])
     needs = [[a for a, f in (("HEARING", h), ("LARGE_PRINT", v), ("INTERPRETER", i)) if f] for h, v, i in
              zip(rr.bernoulli("hearing", np.where(lob == Lob.MEDICARE_ADV, 0.15, 0.03)),
@@ -203,13 +204,13 @@ def _write_enrollment(ctx: GenContext, b: MemberBatch) -> None:
     status = np.full(n, EnrollmentStatus.ACTIVE, dtype=object)
     term = np.full(n, np.datetime64("NaT", "D"), dtype="datetime64[D]")
     retro = np.zeros(n, dtype=bool)
-    base_termed = (scen == "BASE") | (scen == "PEV-01")
+    base_termed = (scen == recipes.BASE) | recipes.tagged(scen, lambda s: s.enrollment == "BASELINE")
     past_term = base_termed & rr.bernoulli("termed", 0.02)
     status[past_term] = EnrollmentStatus.TERMED
     term[past_term] = ctx.as_of - rr.integers("term_back", 10, 40)[past_term].astype("timedelta64[D]")
-    m2 = scen == "PEV-02"  # termed retroactively: term date yesterday
+    m2 = recipes.tagged(scen, lambda s: s.enrollment == "RETRO_TERMED")  # term date yesterday
     status[m2], term[m2], retro[m2] = EnrollmentStatus.TERMED, ctx.as_of - DAY, True
-    m3 = scen == "PEV-03"  # enrollment pending, retro to application
+    m3 = recipes.tagged(scen, lambda s: s.enrollment == "PENDING")  # retro to application
     status[m3], eff[m3], retro[m3] = EnrollmentStatus.PENDING, month_start(ctx.as_of - 20 * DAY), True
     premium = np.where(b.lob == Lob.MEDICAID_MCO, "NA", rr.choice("premium", ["PAID", "DUE", "PAST_DUE"], [92, 5, 3]))
     prior = rr.bernoulli("prior_span", 0.15)
@@ -237,7 +238,7 @@ def _write_pcp_assignments(ctx: GenContext, b: MemberBatch, pcps: dict[str, list
     has = pcp != None  # noqa: E711 - object array comparison
     span_end = np.where(np.isnat(term), ctx.as_of, term)
     a_status = np.where(np.isnat(term), PcpAssignmentStatus.ACTIVE, PcpAssignmentStatus.ENDED)
-    forced_switch = np.isin(scen, ["MPC-02", "MPC-03"])
+    forced_switch = recipes.tagged(scen, lambda s: s.pcp_switch)
     switch = has & (rr.bernoulli("pcp_switch", 0.2) | forced_switch) & ((span_end - eff) > 2 * DAY)
     sw_dt = eff + np.floor(rr.u("switch_at") * ((span_end - eff).astype(int) - 1)).astype("timedelta64[D]") + DAY
     old_pcp = pick(pcps, plan_id, rr.u("old_pcp"))
@@ -252,13 +253,13 @@ def _write_pcp_assignments(ctx: GenContext, b: MemberBatch, pcps: dict[str, list
         "plan_id": pa.array(np.concatenate([plan_id[keep], plan_id[sk]]).tolist()),
         "effective_dt": dates(np.concatenate([cur_eff[keep], eff[sk]])),
         "term_dt": dates(np.concatenate([term[keep], sw_dt[sk] - DAY])),
-        "assignment_type": pa.array(np.concatenate([np.where(scen == "MPC-02", "AUTO_ASSIGNED",
+        "assignment_type": pa.array(np.concatenate([np.where(recipes.tagged(scen, lambda s: s.auto_assigned_pcp), "AUTO_ASSIGNED",
                                                              rr.choice("atype", ["MEMBER_SELECTED", "AUTO_ASSIGNED"], [70, 30]))[keep],
                                                     np.full(sk.sum(), "MEMBER_SELECTED", dtype=object)]).tolist()),
         "status": pa.array(np.concatenate([a_status[keep], np.full(sk.sum(), PcpAssignmentStatus.ENDED, dtype=object)]).tolist()),
         "change_reason": pa.array(np.concatenate([np.full(keep.sum(), None, dtype=object),
-                                                  np.where(scen == "MPC-02", "PROVIDER_TERMED", np.where(scen == "MPC-03", "MOVED",
-                                                           rr.choice("reason", ["MOVED", "PROVIDER_TERMED", "PREFERENCE", "ACCESS"])))[sk]]).tolist(), pa.string()),
+                                                  recipes.override(rr.choice("reason", ["MOVED", "PROVIDER_TERMED", "PREFERENCE", "ACCESS"]),
+                                                                   scen, "pcp_switch")[sk]]).tolist(), pa.string()),
     }, scenario=np.concatenate([scen[keep], scen[sk]]))
 
 
@@ -284,10 +285,11 @@ def _write_risk_scores(ctx: GenContext, b: MemberBatch) -> None:
 
 
 def _write_care_gaps(ctx: GenContext, b: MemberBatch) -> None:
-    """Open or excluded gaps (closing needs a paid claim, R-09); MAS-02 members get an open one."""
+    """Open or excluded gaps (closing needs a paid claim, R-09); open_care_gap scenarios get an open first gap."""
     rr, idx, n, scen = b.rr, b.idx, b.n, b.scen
+    open_gap = recipes.tagged(scen, lambda s: s.open_care_gap)
     k = np.minimum(rr.poisson("gaps", 0.9), 3)
-    k = np.where(scen == "MAS-02", np.maximum(k, 1), k)
+    k = np.where(open_gap, np.maximum(k, 1), k)
     gi = np.repeat(np.arange(n), k)
     gj = np.concatenate([np.arange(x) for x in k]) if len(gi) else np.array([], int)
     gkey = keys.member_key(idx[gi], gj, keys.GAP_SLOTS)
@@ -298,7 +300,7 @@ def _write_care_gaps(ctx: GenContext, b: MemberBatch) -> None:
         "gap_id": pa.array(ctx.ids("care_gap", gkey)),
         "member_id": pa.array(b.member_id[gi].tolist()),
         "measure": pa.array(measure.tolist()),
-        "status": pa.array(np.where((scen[gi] == "MAS-02") & (gj == 0), "OPEN",
+        "status": pa.array(np.where(open_gap[gi] & (gj == 0), "OPEN",
                                     grr.choice("status", ["OPEN", "EXCLUDED"], [85, 15])).tolist()),
         "due_dt": dates(np.full(len(gi), np.datetime64(f"{str(ctx.as_of)[:4]}-12-31"))),
         "closed_by_claim_id": pa.array([None] * len(gi), pa.string()),
@@ -306,9 +308,9 @@ def _write_care_gaps(ctx: GenContext, b: MemberBatch) -> None:
 
 
 def _write_sdoh(ctx: GenContext, b: MemberBatch) -> None:
-    """SDOH screening for 60% of members; MBN-03 and MAS-02 have a positive transport need."""
+    """SDOH screening for 60% of members; transport_need scenarios have a positive transport screen."""
     rr, idx, scen = b.rr, b.idx, b.scen
-    transport = np.isin(scen, ["MBN-03", "MAS-02"])
+    transport = recipes.tagged(scen, lambda s: s.transport_need)
     s = rr.bernoulli("screened", 0.6) | transport
     pos_rate = np.where(b.lob == Lob.MEDICAID_MCO, 0.40, 0.18)
     domain = np.where(transport, "TRANSPORT", rr.choice("sdoh_domain", ["FOOD", "HOUSING", "TRANSPORT", "UTILITIES", "SAFETY", "ISOLATION"]))
@@ -325,9 +327,10 @@ def _write_sdoh(ctx: GenContext, b: MemberBatch) -> None:
 
 
 def _write_household(ctx: GenContext, b: MemberBatch) -> None:
-    """A self row per member plus a caregiver for 10% (20% of consents expired); MBN-04/MPC-04 get a narrow scope."""
+    """A self row per member plus a caregiver for 10% (20% of consents expired); caregiver_scope scenarios get a
+    caregiver with exactly that scope."""
     rr, idx, n, scen = b.rr, b.idx, b.n, b.scen
-    narrow = {sid: catalog.SCENARIOS[sid]["caregiver_scope"] for sid in ("MBN-04", "MPC-04")}
+    narrow = {s.id: s.caregiver_scope for s in recipes.having("caregiver_scope")}
     forced_cg = np.isin(scen, list(narrow))
     cg = rr.bernoulli("caregiver", 0.10) | forced_cg
     ci = idx[cg]

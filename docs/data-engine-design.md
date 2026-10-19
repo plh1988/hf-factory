@@ -91,6 +91,12 @@ than drawn independently.
 - Some scenarios break a rule on purpose (MCI-02 breaks R-03). Those rows are **exempted from that rule by their tag**;
   the rule itself is never loosened. Deliberate dirty data works the same way (8% stale directory entries, 10% stale
   schedules), each tagged so it is visible and exempt (§10).
+- **In code**, every recipe is one typed `Scenario` row in `data_engine/scenarios.py` that declares its facts
+  (`claim_status`, `appeal=AppealRecipe(...)`, `payment="RECOUPMENT"`, `auth_urgent`, `enrollment`, `caregiver_scope`,
+  ...). Generators never test scenario ids; they ask for rows whose recipe has a property, e.g.
+  `tagged(scen, lambda s: s.missing_rendering_npi)` or `override(stype, scen, "auth_service_type")`, and rule
+  exemptions are built the same way (`sql_excluding(lambda s: s.pa_code_without_auth)`). Adding a scenario means
+  adding a row; a test fails if a generator names a scenario id.
 
 ### 2.6 Then it checks itself independently
 

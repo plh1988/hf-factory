@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from factory.data_engine import catalog
+from factory.data_engine import catalog, scenarios
 
 def _sql_list(values) -> str:
     return ", ".join(f"'{v}'" for v in values)
@@ -113,7 +113,7 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_header h WHERE NOT h.is_emergency
               AND EXISTS (SELECT 1 FROM claim_line l WHERE l.claim_id = h.claim_id AND l.cpt_hcpcs IN ({PA_LIST}))
               AND NOT EXISTS (SELECT 1 FROM auth_request a WHERE a.auth_id = h.auth_id AND a.status IN ('APPROVED', 'PARTIAL'))
-              AND h.scenario_id <> 'MCI-02'""",
+              AND {scenarios.sql_excluding(lambda s: s.pa_code_without_auth, "h.scenario_id")}""",
              ["claim_header", "claim_line", "auth_request"]),
         Rule("R-04a", "Participation windows are valid: effective <= term; TERMED rows have a term date", """
             SELECT count(*) FROM network_participation WHERE (term_dt IS NOT NULL AND term_dt < effective_dt)
@@ -195,8 +195,9 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
             SELECT count(*) FROM claim_header h JOIN auth_determination d ON d.auth_id = h.auth_id
             WHERE d.outcome <> 'DENIED' AND (d.valid_from > h.service_from_dt OR d.valid_to < h.service_to_dt)""",
              ["claim_header", "auth_determination"]),
-        Rule("T-05", "Appeals are filed by the deadline (PAP-04 late filings exempt by tag)", """
-            SELECT count(*) FROM appeal_record WHERE filed_dt > deadline_dt AND scenario_id <> 'PAP-04'""",
+        Rule("T-05", "Appeals are filed by the deadline (PAP-04 late filings exempt by tag)", f"""
+            SELECT count(*) FROM appeal_record WHERE filed_dt > deadline_dt
+              AND {scenarios.sql_excluding(lambda s: s.appeal and s.appeal.late_filing)}""",
              ["appeal_record"]),
         Rule("T-05b", "Appeal decisions come after filing", """
             SELECT count(*) FROM appeal_record WHERE decision_dt IS NOT NULL AND decision_dt < filed_dt""",

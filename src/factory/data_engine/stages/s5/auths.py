@@ -14,6 +14,7 @@ import pyarrow as pa
 
 from factory.codes import AuthLineStatus, AuthStatus, ClaimType, DenialCategory, ProviderRole, ServiceType
 from factory.data_engine import catalog, keys
+from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.knowledge_catalog import pa_policy_asset_id
 from factory.data_engine.rng import RowRandom
@@ -91,30 +92,30 @@ def _auth_rows(ctx: GenContext, inp: Inputs, c: ClaimBatch) -> AuthBatch:
 def _outcomes_and_clocks(ctx: GenContext, c: ClaimBatch, a: AuthBatch) -> None:
     """Outcome mix (D-06) and scenario overrides, service type, urgency, received/due/decision times (T-03)."""
     arr, scen, linked, lk = a.arr, a.scen, a.linked, a.lk
-    # happy path PAS-01 = a routine standard review; other baseline rows keep the D-06 outcome mix
+    happy = [s for s in recipes.SCENARIOS.values() if s.anchor == "auth" and not s.forced]
+    forced = [s for s in recipes.SCENARIOS.values() if s.anchor == "auth" and s.forced]
+    # happy paths (PAS-01, a routine standard review) keep their tag only where the drawn outcome matches;
+    # other baseline rows keep the D-06 outcome mix
     outcome = arr.choice("outcome", *catalog.AUTH_OUTCOMES).astype(object)
-    scen[(scen == "PAS-01") & (outcome != AuthStatus.IN_REVIEW)] = "BASE"
+    for s in happy:
+        scen[(scen == s.id) & (outcome != s.auth_status)] = recipes.BASE
 
     stype = arr.choice("stype", [ServiceType.OUTPATIENT, ServiceType.INPATIENT, ServiceType.DME, ServiceType.HOME_HEALTH,
                                  ServiceType.SNF, ServiceType.PHARMACY, ServiceType.BH], [45, 10, 10, 10, 10, 10, 5]).astype(object)
     stype[linked] = np.where(c.ctype[lk] == ClaimType.FACILITY, ServiceType.INPATIENT, ServiceType.OUTPATIENT)
-    stype[scen == "PAS-02"] = ServiceType.SNF
-    stype[scen == "PAS-03"] = ServiceType.OUTPATIENT
-    urgent = arr.bernoulli("urgent", 0.15) & ~linked
-    urgent[scen == "PAS-02"] = True
-    urgent[np.isin(scen, ["PAS-01", "PAS-03"])] = False
+    recipes.override(stype, scen, "auth_service_type")
+    urgent = recipes.override(arr.bernoulli("urgent", 0.15) & ~linked, scen, "auth_urgent")
 
     recv_day = ctx.as_of - arr.integers("recv_back", 0, 60).astype("timedelta64[D]")
     recv_day[linked] = c.s_from[lk] - arr.integers("lead", 5, 26)[linked].astype("timedelta64[D]")
-    recv_day[scen == "PAS-01"] = ctx.as_of - 5 * DAY
-    recv_day[scen == "PAS-02"] = ctx.as_of - 1 * DAY
-    recv_day[scen == "PAS-03"] = ctx.as_of - 3 * DAY
+    for s in recipes.having("auth_received_days_ago"):
+        recv_day[scen == s.id] = ctx.as_of - s.auth_received_days_ago * DAY
     received = recv_day.astype("datetime64[s]") + (8 + arr.integers("recv_hour", 0, 9)).astype("timedelta64[h]")
     due = received + np.where(urgent, 72, 7 * 24).astype("timedelta64[h]")
 
     outcome[linked] = AuthStatus.APPROVED
-    outcome[np.isin(scen, ["PAS-02", "PAS-03"])] = AuthStatus.PENDED_INFO
-    outcome[scen == "PAS-04"] = AuthStatus.DENIED
+    for s in forced:
+        outcome[scen == s.id] = s.auth_status
     decided = np.isin(outcome, [AuthStatus.APPROVED, AuthStatus.PARTIAL, AuthStatus.DENIED])
     det_dt = received + (arr.u("det_at") * 0.95 * (due - received).astype(np.int64)).astype("timedelta64[s]")
     det_dt[linked] = received[linked] + arr.integers("det_lag", 1, 4)[linked].astype("timedelta64[D]")
@@ -122,9 +123,13 @@ def _outcomes_and_clocks(ctx: GenContext, c: ClaimBatch, a: AuthBatch) -> None:
     outcome[late] = AuthStatus.IN_REVIEW
     decided &= ~late
     status = outcome
-    # PAS-01 tags every row that satisfies its recipe: standard review still open, no documents pending
-    routine = ~linked & (status == AuthStatus.IN_REVIEW) & ~urgent & np.isin(scen, ["BASE", "PAS-01"])
-    a.scen = np.where(routine, "PAS-01", np.where(scen == "PAS-01", "BASE", scen))
+    # a happy path tags every baseline row that satisfies its recipe (PAS-01: standard review still open)
+    for s in happy:
+        match = ~linked & (status == s.auth_status) & np.isin(scen, [recipes.BASE, s.id])
+        if s.auth_urgent is not None:
+            match &= urgent == s.auth_urgent
+        scen = np.where(match, s.id, np.where(scen == s.id, recipes.BASE, scen))
+    a.scen = scen
     a.stype, a.urgent, a.recv_day, a.received, a.due = stype, urgent, recv_day, received, due
     a.status, a.decided, a.det_dt = status, decided, det_dt
 
@@ -135,7 +140,7 @@ def _codes_and_parties(ctx: GenContext, inp: Inputs, c: ClaimBatch, a: AuthBatch
     cpt0 = arr.choice("cpt", catalog.PA_CODES).astype(object)
     claim_line0 = {int(ck): cp for ck, cp, l in zip(c.ckey[c.li], c.cpt, c.ln) if l == 0}
     cpt0[linked] = [claim_line0[int(k)] for k in c.ckey[lk]]
-    cpt0[a.scen == "PAS-03"] = "97161"
+    recipes.override(cpt0, a.scen, "auth_cpt")
 
     plan_ids = c.m["plan_id"][a.a_member]
     member_ids = c.m["member_id"][a.a_member]
@@ -262,8 +267,7 @@ def _write_documentation(ctx: GenContext, a: AuthBatch) -> None:
     q = np.where(doc_req)[0]
     qrr = ctx.rr("documentation_requirement", a.a_key[q])
     doc_type = qrr.choice("doc", ["CLINICAL_NOTES", "IMAGING", "LABS", "PT_EVAL", "PRESCRIBER_STATEMENT"]).astype(object)
-    doc_type[a.scen[q] == "PAS-02"] = "DISCHARGE_SUMMARY"
-    doc_type[a.scen[q] == "PAS-03"] = "PT_EVAL"
+    recipes.override(doc_type, a.scen[q], "doc_type")
     pended = a.status[q] == AuthStatus.PENDED_INFO
     req_dt = a.recv_day[q] + DAY
     ctx.write("documentation_requirement", {

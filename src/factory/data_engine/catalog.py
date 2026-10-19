@@ -6,7 +6,7 @@ needs a licensed CPT table or synthetic codes. NDCs below are illustrative, not 
 
 from __future__ import annotations
 
-from factory.codes import AuthStatus, ClaimStatus, DenialCategory, FacilityType, GeoType, Lob, ProviderType
+from factory.codes import AuthStatus, DenialCategory, FacilityType, GeoType, Lob, ProviderType
 
 CATALOG_VERSION = "2.4.0"
 
@@ -185,71 +185,8 @@ USE_CASES.update({
 # Scope a caregiver's authorization_scope must cover for a member-facing use case (rule R-06)
 CAREGIVER_SCOPE = {"MBN": "BENEFITS", "MCI": "CLAIMS", "MPC": "PCP_CHANGE", "MAS": "APPOINTMENTS", "MBP": "BILLING", "MPA": "PA_STATUS"}
 
-# Scenario facts the generator enforces (S1 use cases). Others fall back to baseline data.
-SCENARIOS: dict[str, dict] = {
-    "PCS-01": {"anchor": "claim", "type": "happy", "title": "Status by claim number", "claim_status": ClaimStatus.PAID},
-    "PCS-02": {"anchor": "claim", "type": "edge", "title": "Pended for records", "claim_status": ClaimStatus.PENDED,
-               "pend_reason": "RECORDS_REQUEST"},
-    "PCS-03": {"anchor": "claim", "type": "edge", "title": "Denied CO-16 missing information",
-               "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.MISSING_INFO},
-    "PCS-04": {"anchor": "claim", "type": "compliance", "title": "Caller fails verification (API-level)",
-               "claim_status": ClaimStatus.PAID},
-    "PAS-01": {"anchor": "auth", "type": "happy", "title": "Routine status check", "auth_status": AuthStatus.IN_REVIEW},
-    "PAS-02": {"anchor": "auth", "type": "edge", "title": "Urgent SNF authorization at discharge",
-               "auth_status": AuthStatus.PENDED_INFO, "doc_type": "DISCHARGE_SUMMARY"},
-    "PAS-03": {"anchor": "auth", "type": "edge", "title": "Missing PT evaluation", "auth_status": AuthStatus.PENDED_INFO,
-               "doc_type": "PT_EVAL"},
-    "PAS-04": {"anchor": "auth", "type": "compliance", "title": "Denied; asks for reviewer details",
-               "auth_status": AuthStatus.DENIED},
-    "PEV-01": {"anchor": "member", "type": "happy", "title": "Active member check"},
-    "PEV-02": {"anchor": "member", "type": "edge", "title": "Termed retroactively"},
-    "PEV-03": {"anchor": "member", "type": "edge", "title": "Enrollment pending"},
-    "PEV-04": {"anchor": "member", "type": "compliance", "title": "Bulk lookup attempt (API-level)"},
-}
-
-SCENARIOS.update({
-    # member-anchored (s4)
-    "MBN-01": {"anchor": "member", "type": "happy", "title": "Cost of a specialist visit"},
-    "MBN-02": {"anchor": "member", "type": "edge", "title": "OTC and dental allowance"},
-    "MBN-03": {"anchor": "member", "type": "edge", "title": "Transportation benefit with a transport need"},
-    "MBN-04": {"anchor": "member", "type": "compliance", "title": "Caregiver outside authorized scope", "caregiver_scope": ["BENEFITS"]},
-    "MPS-01": {"anchor": "member", "type": "happy", "title": "In-network specialist search"},
-    "MPS-02": {"anchor": "member", "type": "edge", "title": "Spanish-speaking pediatrician in a rural area"},
-    "MPS-03": {"anchor": "member", "type": "edge", "title": "Accessible specialist"},
-    "MPS-04": {"anchor": "member", "type": "data", "title": "Directory vs participation mismatch (API-level)"},
-    "MPC-01": {"anchor": "member", "type": "happy", "title": "Standard PCP change"},
-    "MPC-02": {"anchor": "member", "type": "edge", "title": "PCP terminated and auto-assigned", "pcp_switch": "PROVIDER_TERMED"},
-    "MPC-03": {"anchor": "member", "type": "edge", "title": "Moved counties", "pcp_switch": "MOVED"},
-    "MPC-04": {"anchor": "member", "type": "compliance", "title": "Caregiver without PCP-change scope", "caregiver_scope": ["APPOINTMENTS"]},
-    "MAS-01": {"anchor": "member", "type": "happy", "title": "Sick visit next available"},
-    "MAS-02": {"anchor": "member", "type": "edge", "title": "Wellness visit with open care gaps and transport need"},
-    "MAS-03": {"anchor": "member", "type": "compliance", "title": "No availability within the wait standard (API-level)"},
-    "MAS-04": {"anchor": "member", "type": "data", "title": "Stale availability schedule (provider data)"},
-    # claim-anchored (s5)
-    "MCI-01": {"anchor": "claim", "type": "happy", "title": "EOB explanation", "claim_status": ClaimStatus.PAID},
-    "MCI-02": {"anchor": "claim", "type": "edge", "title": "Denied for missing authorization (CO-197)",
-               "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.AUTH},
-    "MCI-03": {"anchor": "claim", "type": "edge", "title": "Pended for coordination of benefits",
-               "claim_status": ClaimStatus.PENDED, "pend_reason": "COB_INFO"},
-    "MCI-04": {"anchor": "claim", "type": "data", "title": "Original and reprocessed claim both visible", "claim_status": ClaimStatus.PAID},
-    "PAP-01": {"anchor": "claim", "type": "happy", "title": "Start a claim appeal", "claim_status": ClaimStatus.DENIED,
-               "denial_category": DenialCategory.MED_NECESSITY},
-    "PAP-02": {"anchor": "claim", "type": "edge", "title": "Appeal status", "claim_status": ClaimStatus.DENIED, "denial_category": DenialCategory.MED_NECESSITY},
-    "PAP-03": {"anchor": "claim", "type": "edge", "title": "Appeal overturned, awaiting reprocessing", "claim_status": ClaimStatus.DENIED,
-               "denial_category": DenialCategory.MED_NECESSITY},
-    "PAP-04": {"anchor": "claim", "type": "compliance", "title": "Deadline passed", "claim_status": ClaimStatus.DENIED,
-               "denial_category": DenialCategory.MED_NECESSITY},
-    "PPI-01": {"anchor": "claim", "type": "happy", "title": "Payment date and trace", "claim_status": ClaimStatus.PAID},
-    "PPI-02": {"anchor": "claim", "type": "edge", "title": "Paid less than billed", "claim_status": ClaimStatus.PAID},
-    "PPI-03": {"anchor": "claim", "type": "edge", "title": "Recoupment offset", "claim_status": ClaimStatus.PAID},
-    "PPI-04": {"anchor": "claim", "type": "data", "title": "Payment to wrong TIN", "claim_status": ClaimStatus.PAID},
-})
-
-# Claim scenarios whose recipe forces a professional, in-network, non-emergency claim
-# Happy-path claim scenarios are not forced: the tag stays only on claims that end in the recipe's status
-# (PAP-01 also needs an appealable denial); otherwise the claim is BASE. This keeps the payload's denial rate.
-HAPPY_CLAIM_SCENARIOS = {"PCS-01", "MCI-01", "PPI-01", "PPI-02", "PAP-01"}
-FORCED_CLAIM_SCENARIOS = {sid for sid, sc in SCENARIOS.items() if sc["anchor"] == "claim" and sid not in HAPPY_CLAIM_SCENARIOS}
+# Scenario recipes live in scenarios.py; re-exported here for code that reads the catalog.
+from factory.data_engine.scenarios import FORCED_CLAIM_SCENARIOS, HAPPY_CLAIM_SCENARIOS, SCENARIOS  # noqa: E402,F401
 
 # Dirty-data tags (Q-02): rows that break a rule on purpose, exempted by name in s7.
 DQ_STALE_DIRECTORY = "DQ-STALE-DIRECTORY"

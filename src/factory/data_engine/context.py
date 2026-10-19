@@ -67,7 +67,7 @@ class GenContext:
         mix = [
             (s.scenario_id, s.share_pct)
             for s in self.spec.scenario_mix
-            if s.scenario_id in catalog.SCENARIOS and catalog.SCENARIOS[s.scenario_id]["anchor"] == anchor
+            if s.scenario_id in catalog.SCENARIOS and catalog.SCENARIOS[s.scenario_id].anchor == anchor
         ]
         if not mix:
             return np.full(rr.n, "BASE", dtype=object)
