@@ -133,6 +133,12 @@ flowchart LR
   DE -- "s7 manifest" --> API["API Engine s8"]
 ```
 
+**In code.** Each stage is a `StageSpec` in the runner's `STAGES` table (`data_engine/stage.py`): job name, default
+rules, the stages it needs, and a `run(ctx, options)` callable. Member-sharded stages (s4, s5) also provide a
+`ShardedGenerator` module (`prepare`, `task_count`, `run_task`), checked when the table is built; the runner hands
+their tasks to the executor port. Payload checks are in `control/validation.py`: shared checks (names, order, run
+settings, upstream tables, entities, profile limits), then one validator per stage in `DATA_VALIDATORS`.
+
 ## 5. Interface
 
 ### 5.1 Endpoints

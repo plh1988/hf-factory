@@ -288,7 +288,8 @@ def prepare(ctx: GenContext) -> dict:
     return {"plans_by_lob": load_plans(ctx), "pcps": load_pcps(ctx) if ctx.wants("pcp_assignment") else {}}
 
 
-def task_count(ctx: GenContext) -> int:
+def task_count(ctx: GenContext, prep: dict) -> int:
+    """One task per member shard."""
     return len(ctx.shard_ranges(int(ctx.spec.volumes["members"])))
 
 
@@ -303,6 +304,6 @@ ENTITIES = ["member_demographics", "plan_enrollment", "pcp_assignment", "risk_sc
 
 def run(ctx: GenContext) -> list[str]:
     prep = prepare(ctx)
-    for i in range(task_count(ctx)):
+    for i in range(task_count(ctx, prep)):
         run_task(ctx, i, prep)
     return [e for e in ENTITIES if ctx.wants(e)]

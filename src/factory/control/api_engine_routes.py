@@ -12,7 +12,8 @@ from fastapi.responses import JSONResponse
 from factory.api_engine.stage import run_api_engine
 from factory.contracts import ApiJob
 from factory.control.deps import TenantApiMount, get_registry, get_tenant_api
-from factory.control.registry import Registry, validate_api_job
+from factory.control.registry import Registry
+from factory.control.validation import validate_api_job
 
 router = APIRouter(tags=["API engine"])
 

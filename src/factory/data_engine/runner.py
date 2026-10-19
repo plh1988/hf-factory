@@ -1,7 +1,8 @@
 """Runs Data Engine stages s3-s7, one REST job at a time.
 
-run_stage() is the single entry point for a stage: it resets that stage's counters (so re-runs are
-idempotent), runs the generator, checks the rules the job names, and publishes progress events."""
+STAGES is the stage table (see stage.StageSpec). run_stage() is the single entry point: it resets that stage's
+counters (so re-runs are idempotent), runs the stage, checks the rules the job names, and publishes progress
+events. Sharded stages run their tasks through the profile's job executor."""
 
 from __future__ import annotations
 
@@ -15,16 +16,9 @@ from factory.contracts import EntityResult, Manifest, StageResult
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext
 from factory.data_engine.rng import fmt_checksum
+from factory.data_engine.stage import ShardedGenerator, StageOptions, StageOutput, StageSpec
 from factory.data_engine.stages import s3_reference, s4_members, s5_claims_auth, s6_care_knowledge, s7_validate
 
-# stage -> (job name, default rules, stages it needs). v1: s6 needs s5 (design doc gap 1).
-STAGES: dict[str, tuple[str, list[str], list[str]]] = {
-    "s3": ("generate_reference_data", ["R-04", "F-04", "P-02"], []),
-    "s4": ("generate_members", ["R-02", "R-05", "R-06", "T-01"], ["s3"]),
-    "s5": ("generate_claims_auth", ["R-03", "R-07", "F-01", "F-02", "F-05", "T-02", "T-03", "T-04"], ["s4"]),
-    "s6": ("generate_care_knowledge", ["R-09", "R-10", "R-11", "T-08"], ["s5"]),
-    "s7": ("validate_and_scan", [], ["s3", "s4", "s5", "s6"]),
-}
 TOPIC = "scenario-events"
 
 
@@ -54,24 +48,20 @@ class DataEngineRun:
         return bool(self.manifest) and self.report.get("failed", 1) == 0 and self.privacy.get("status") == "PASS"
 
 
-SHARDED = {"s4": s4_members, "s5": s5_claims_auth}
-
-
 def _loaded_to(stores, ents: list[str]) -> str:
     """Human-readable target for a stage result, e.g. 'memory://tables' or 'alloydb://... + bigquery://... (9 entities)'."""
     mirrored = [e for e in ents if stores.analytics is not None and stores.analytics.wants(e)]
     return stores.tables.uri + (f" + {stores.analytics.uri} ({len(mirrored)} entities)" if mirrored else "")
 
 
-def run_sharded(ctx: GenContext, stage: str) -> list[str]:
+def run_sharded(ctx: GenContext, stage: str, mod: ShardedGenerator) -> list[str]:
     """Run a member-sharded stage through the profile's job executor (in-process tasks, or a Cloud Run Job)."""
-    mod = SHARDED[stage]
     stores = ctx.stores
     # what a remote task needs: the run spec and the shard count
     stores.blobs.put("runs/spec.json", ctx.spec.model_dump_json(indent=2).encode(), "application/json")
     stores.blobs.put(f"runs/{stage}/job.json", json.dumps({"shards": ctx.shards}).encode(), "application/json")
     prep = mod.prepare(ctx)
-    n = mod.task_count(ctx, prep) if stage == "s5" else mod.task_count(ctx)
+    n = mod.task_count(ctx, prep)
 
     def local_task(i: int) -> TaskResult:
         """Run task i in-process with its own counters, so a retried task's partial counts are discarded
@@ -97,45 +87,70 @@ def run_sharded(ctx: GenContext, stage: str) -> list[str]:
 
 def run_task_remote(ctx: GenContext, stage: str, index: int) -> dict:
     """Body of one Cloud Run Job task (`factory task`): generate shard `index`, return its partial counts/checksums."""
-    mod = SHARDED[stage]
+    mod = STAGES[stage].sharded
+    if mod is None:
+        raise ValueError(f"{stage} is not a sharded stage")
     prep = mod.prepare(ctx)
     ctx.counts, ctx.checksums = {}, {}
     mod.run_task(ctx, index, prep)
     return {"index": index, "counts": ctx.counts, "checksums": {k: fmt_checksum(v) for k, v in ctx.checksums.items()}}
 
 
+# ---------------------------------------------------------------- stage run callables
+def _sharded(stage: str, mod: ShardedGenerator):
+    return lambda ctx, opts: StageOutput(run_sharded(ctx, stage, mod))
+
+
+def _run_s3(ctx: GenContext, opts: StageOptions) -> StageOutput:
+    return StageOutput(s3_reference.run(ctx))
+
+
+def _run_s6(ctx: GenContext, opts: StageOptions) -> StageOutput:
+    ents, extra = s6_care_knowledge.run(ctx)
+    return StageOutput(ents, extra)
+
+
+def _run_s7(ctx: GenContext, opts: StageOptions) -> StageOutput:
+    """Validation: rules, privacy scan and manifest. Stores them on opts.run; the gate is red if anything fails."""
+    out = s7_validate.run(ctx, opts.rule_sets, opts.privacy_options)
+    if opts.run is not None:
+        opts.run.report, opts.run.privacy, opts.run.manifest, opts.run.manifest_uri = (
+            out["report"], out["privacy"], out["manifest"], out["manifest_uri"])
+    passed = out["report"]["failed"] == 0 and out["privacy"]["status"] == "PASS"
+    return StageOutput([], {
+        "total_rows": sum(ctx.counts.values()), "entity_count": len(ctx.counts),
+        "validation": {k: v for k, v in out["report"].items() if k != "results"},
+        "failed_rules": [r for r in out["report"]["results"] if r["status"] == "FAIL"],
+        "privacy_scan": out["privacy"]["status"], "privacy_detail": out["privacy"],
+        "manifest_uri": out["manifest_uri"], "report_uri": out["report_uri"],
+        "manifest": out["manifest"].model_dump(mode="json"),
+        "gate": "data_quality_gate PASSED" if passed else "data_quality_gate FAILED"})
+
+
+STAGES: dict[str, StageSpec] = {spec.name: spec for spec in [
+    StageSpec("s3", "generate_reference_data", ["R-04", "F-04", "P-02"], [], _run_s3),
+    StageSpec("s4", "generate_members", ["R-02", "R-05", "R-06", "T-01"], ["s3"], _sharded("s4", s4_members), s4_members),
+    StageSpec("s5", "generate_claims_auth", ["R-03", "R-07", "F-01", "F-02", "F-05", "T-02", "T-03", "T-04"], ["s4"],
+              _sharded("s5", s5_claims_auth), s5_claims_auth),
+    StageSpec("s6", "generate_care_knowledge", ["R-09", "R-10", "R-11", "T-08"], ["s5"], _run_s6),  # v1: needs claims (gap 1)
+    StageSpec("s7", "validate_and_scan", [], ["s3", "s4", "s5", "s6"], _run_s7),
+]}
+
+
 def run_stage(ctx: GenContext, stage: str, *, rules: list[str] | None = None, rule_sets: list[str] | None = None,
               privacy_options: dict | None = None, run: DataEngineRun | None = None) -> StageResult:
     """Run one stage against the stores in ctx. Raises DataEngineError on failure (after publishing it)."""
-    job, default_rules, _ = STAGES[stage]
-    rules = default_rules if rules is None else rules
+    spec = STAGES[stage]
+    rules = spec.default_rules if rules is None else rules
     stores = ctx.stores
     for e in catalog.STAGE_ENTITIES.get(stage, []):  # idempotent re-run: recount this stage from zero
         ctx.counts.pop(e, None)
         ctx.checksums.pop(e, None)
-    stores.events.publish(TOPIC, {"stage": stage, "job": job, "state": "STARTED"})
+    stores.events.publish(TOPIC, {"stage": stage, "job": spec.job, "state": "STARTED"})
     t0 = time.perf_counter()
-    extra: dict[str, Any] = {}
     try:
-        if stage == "s3":
-            ents = s3_reference.run(ctx)
-        elif stage in SHARDED:
-            ents = run_sharded(ctx, stage)
-        elif stage == "s6":
-            ents, extra = s6_care_knowledge.run(ctx)
-        else:
-            out = s7_validate.run(ctx, rule_sets, privacy_options)
-            if run is not None:
-                run.report, run.privacy, run.manifest, run.manifest_uri = out["report"], out["privacy"], out["manifest"], out["manifest_uri"]
-            ents = []
-            extra = {"total_rows": sum(ctx.counts.values()), "entity_count": len(ctx.counts),
-                     "validation": {k: v for k, v in out["report"].items() if k != "results"},
-                     "failed_rules": [r for r in out["report"]["results"] if r["status"] == "FAIL"],
-                     "privacy_scan": out["privacy"]["status"], "privacy_detail": out["privacy"],
-                     "manifest_uri": out["manifest_uri"], "report_uri": out["report_uri"],
-                     "manifest": out["manifest"].model_dump(mode="json"),
-                     "gate": "data_quality_gate PASSED" if out["report"]["failed"] == 0 and out["privacy"]["status"] == "PASS"
-                     else "data_quality_gate FAILED"}
+        out = spec.run(ctx, StageOptions(rules=rules, rule_sets=rule_sets, privacy_options=privacy_options, run=run))
+        ents, extra = out.entities, out.extra
         rule_checks, rule_detail = s7_validate.check_rules(ctx, rules) if rules else ({}, [])
     except Exception as exc:
         stores.events.publish(TOPIC, {"stage": stage, "state": "FAILED", "error": repr(exc)})

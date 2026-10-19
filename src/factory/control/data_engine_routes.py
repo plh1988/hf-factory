@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from factory.contracts import DataJob
 from factory.control.deps import TenantApiMount, get_registry, get_tenant_api
 from factory.control.errors import JobRejected, RejectCode
-from factory.control.registry import Registry, Run, validate_data_job
+from factory.control.registry import Registry, Run
+from factory.control.validation import validate_data_job
 from factory.data_engine.runner import STAGES, DataEngineError, run_stage
 
 router = APIRouter(tags=["Data engine"])
@@ -45,7 +46,7 @@ def _invalidate_downstream(run: Run, tenant_api: TenantApiMount) -> None:
 
 def stage_handler(stage: str) -> Callable[..., Any]:
     """The POST handler for one data-engine stage."""
-    job_name = STAGES[stage][0]
+    job_name = STAGES[stage].job
 
     def handler(job: DataJob, tenant: str | None = Query(None, description="Override tenant resolution"),
                 registry: Registry = Depends(get_registry), tenant_api: TenantApiMount = Depends(get_tenant_api)) -> Any:
@@ -79,5 +80,6 @@ def stage_handler(stage: str) -> Callable[..., Any]:
     return handler
 
 
-for _stage, (_job_name, _, _) in STAGES.items():
-    router.post(f"/factory/data-engine/{_stage}", summary=f"{_stage}: {_job_name}", operation_id=f"run_{_stage}")(stage_handler(_stage))
+for _spec in STAGES.values():
+    router.post(f"/factory/data-engine/{_spec.name}", summary=f"{_spec.name}: {_spec.job}", operation_id=f"run_{_spec.name}")(
+        stage_handler(_spec.name))
