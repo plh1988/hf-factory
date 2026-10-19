@@ -138,6 +138,10 @@ rules, the stages it needs, and a `run(ctx, options)` callable. Member-sharded s
 `ShardedGenerator` module (`prepare`, `task_count`, `run_task`), checked when the table is built; the runner hands
 their tasks to the executor port. Payload checks are in `control/validation.py`: shared checks (names, order, run
 settings, upstream tables, entities, profile limits), then one validator per stage in `DATA_VALIDATORS`.
+Generators work on typed array bundles built by small steps: s4 fills a `MemberBatch` and calls one writer per
+entity; s5 (package `stages/s5/`) builds a `ClaimBatch` in six steps (expand, types and dates, providers, status,
+lines, pricing), an `AuthBatch` in three, then plans appeals and reprocessing and writes each claim entity. Row
+keys come from `data_engine/keys.py`.
 
 ## 5. Interface
 
