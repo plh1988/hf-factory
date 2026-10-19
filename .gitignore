@@ -1,7 +1,41 @@
+# Python
 .venv/
 __pycache__/
-*.pyc
-.pytest_cache/
-.env
-out/
+*.py[cod]
 *.egg-info/
+build/
+dist/
+*.whl
+
+# Tests and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local configuration and secrets (keep the example)
+.env
+.env.*
+!.env.example
+
+# GCP credentials: never commit service-account keys
+*-key.json
+service-account*.json
+credentials*.json
+application_default_credentials.json
+
+# Real s2 outputs name real cloud resources; only the example and the in-memory one are tracked
+config/s2_output_*.json
+!config/s2_output_gcp.example.json
+!config/s2_output_memory.json
+
+# Local run output
+out/
+*.log
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

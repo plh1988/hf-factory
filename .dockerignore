@@ -10,3 +10,11 @@ scripts/
 **/*.pyc
 .pytest_cache/
 *.egg-info/
+.env.*
+*.log
+# never bake credentials or real resource names into the image (pass them at run time)
+*-key.json
+service-account*.json
+credentials*.json
+application_default_credentials.json
+config/s2_output_*.json
