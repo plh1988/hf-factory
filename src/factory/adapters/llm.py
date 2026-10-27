@@ -1,4 +1,5 @@
-"""LLM adapters: Vertex AI (Gemini + text embeddings) and a deterministic offline stand-in."""
+"""LLM adapters: Vertex AI (Gemini + text embeddings), any OpenAI-compatible server (LM Studio, Ollama, vLLM)
+for local testing, and a deterministic offline stand-in."""
 
 from __future__ import annotations
 
@@ -97,6 +98,94 @@ class VertexLLM:
     def health(self) -> str:
         self.embed(["health check"], task="query")
         return f"ok (Vertex AI {self._project}/{self._location}, {self.model}, {self.embedding_model})"
+
+
+class OpenAICompatibleLLM:
+    """Any server with the OpenAI REST contract: LM Studio (default http://localhost:1234/v1), Ollama, vLLM.
+
+    Profile keys: base_url, model, optional api_key (LM Studio ignores it), embedding_model (empty: offline hashed
+    embeddings, for servers with only a chat model loaded), embedding_dim (offline fallback only),
+    max_output_tokens (2048), timeout_s (300: local models can be slow), max_retries (3), embed_batch (32).
+
+    Calls use temperature 0 and a fixed seed. Reasoning models' <think>...</think> blocks are removed from replies.
+    """
+
+    def __init__(self, cfg: AdapterConfig, transport=None) -> None:
+        import httpx  # imported lazily, like the Vertex SDK
+
+        self.base_url = str(cfg.get("base_url", "http://localhost:1234/v1")).rstrip("/")
+        self.model = cfg.get("model")
+        if not self.model:
+            raise ValueError("set llm.model in the profile yaml to the model id loaded in the server (GET /v1/models)")
+        self.embedding_model = cfg.get("embedding_model") or None
+        self.max_output_tokens = int(cfg.get("max_output_tokens", 2048))
+        self.max_retries = int(cfg.get("max_retries", 3))
+        self.embed_batch = int(cfg.get("embed_batch", 32))
+        self._fallback = None
+        if not self.embedding_model:
+            self._fallback = OfflineLLM(AdapterConfig(kind="offline", embedding_dim=cfg.get("embedding_dim", 256)))
+            self.embedding_model = self._fallback.embedding_model
+        headers = {"Authorization": f"Bearer {cfg.get('api_key')}"} if cfg.get("api_key") else {}
+        self._http = httpx.Client(base_url=self.base_url, headers=headers, timeout=float(cfg.get("timeout_s", 300)),
+                                  transport=transport)
+
+    def _post(self, path: str, body: dict, what: str) -> dict:
+        """POST with retries on connection errors, timeouts, 408/429/5xx."""
+        import httpx
+
+        delay = 1.0
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                resp = self._http.post(path, json=body)
+                if resp.status_code not in RETRYABLE_CODES:
+                    if resp.status_code >= 400:
+                        raise LLMError(f"{self.base_url}{path} {what} failed ({resp.status_code}): {resp.text[:300]}")
+                    return resp.json()
+                problem = f"HTTP {resp.status_code}"
+            except httpx.TransportError as exc:  # server not running, connection reset, timeout
+                problem = repr(exc)
+            if attempt == self.max_retries:
+                raise LLMError(f"{self.base_url}{path} {what} failed after {attempt} attempts: {problem}. "
+                               "Is the server running and the model loaded?")
+            log.warning("%s %s: %s, retry %d/%d in %.0fs", self.base_url, what, problem, attempt, self.max_retries, delay)
+            time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+        raise LLMError(f"{what} failed")
+
+    def generate(self, prompt: str, system: str = "") -> str:
+        messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
+        data = self._post("/chat/completions", {"model": self.model, "messages": messages, "temperature": 0, "seed": 0,
+                                                "max_tokens": self.max_output_tokens, "stream": False}, "generate")
+        try:
+            text = data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMError(f"unexpected chat completion response: {str(data)[:300]}") from exc
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+        if not text:
+            raise LLMError(f"{self.model} returned no text (finish_reason={data['choices'][0].get('finish_reason')})")
+        return text
+
+    def embed(self, texts: list[str], task: EmbedTask = "document") -> np.ndarray:
+        if self._fallback is not None:
+            return self._fallback.embed(texts, task)
+        out: list[list[float]] = []
+        for i in range(0, len(texts), self.embed_batch):
+            data = self._post("/embeddings", {"model": self.embedding_model, "input": texts[i : i + self.embed_batch]}, "embed")
+            out += [d["embedding"] for d in sorted(data["data"], key=lambda d: d["index"])]
+        if len(out) != len(texts):
+            raise LLMError(f"{self.base_url} returned {len(out)} embeddings for {len(texts)} texts")
+        return np.asarray(out, dtype=np.float32)
+
+    def health(self) -> str:
+        resp = self._http.get("/models")
+        resp.raise_for_status()
+        loaded = [m.get("id") for m in resp.json().get("data", [])]
+        wanted = [self.model] + ([] if self._fallback else [self.embedding_model])
+        missing = [m for m in wanted if m not in loaded]
+        if missing:
+            return f"WARN {self.base_url}: {missing} not loaded; the server lists {loaded}"
+        emb = "offline hashed embeddings" if self._fallback else self.embedding_model
+        return f"ok ({self.base_url}, {self.model}, {emb})"
 
 
 class OfflineLLM:

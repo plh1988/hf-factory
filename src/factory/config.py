@@ -19,7 +19,7 @@ from factory.contracts import S2Output
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "config"
 
-ProfileName = Literal["memory", "memory-offline", "gcp"]
+ProfileName = Literal["memory", "memory-offline", "memory-local", "gcp"]
 
 
 class Settings(BaseSettings):

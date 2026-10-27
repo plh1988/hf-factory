@@ -31,7 +31,8 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
         "vectors": {"numpy": lambda c, ns: memory.NumpyVectorIndex(), "vertex_vector_search": gcp("VertexVectorIndex")},
         "events": {"log": lambda c, ns: memory.LogEventBus(), "pubsub": gcp("PubSubEventBus")},
         "text_cache": {"memory": lambda c, ns: memory.MemoryTextCache(), "gcs": gcp("GCSTextCache")},
-        "llm": {"offline": lambda c, ns: llm.OfflineLLM(c), "vertex": lambda c, ns: llm.VertexLLM(c)},
+        "llm": {"offline": lambda c, ns: llm.OfflineLLM(c), "vertex": lambda c, ns: llm.VertexLLM(c),
+                "openai_compatible": lambda c, ns: llm.OpenAICompatibleLLM(c)},
         "deployer": {"local": lambda c, ns: LocalDeployer(c), "cloud_run": CloudRunDeployer},
         "executor": {"local": LocalExecutor, "cloud_run_job": CloudRunJobExecutor},
         "analytics": {"bigquery": gcp("BigQueryAnalyticsStore")},  # "tables" is built below: it needs the TableStore

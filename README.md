@@ -106,6 +106,7 @@ Gaps in the spec payloads and how they are filled (each reported in the response
 |---|---|---|---|---|---|---|---|---|
 | `memory-offline` | DuckDB in memory | same tables | dict | NumPy | log | offline stand-in | in-process | same server |
 | `memory` | DuckDB in memory | same tables | dict | NumPy | log | **Vertex AI** | in-process | same server |
+| `memory-local` | DuckDB in memory | same tables | dict | NumPy | log | **local model** (LM Studio, Ollama) | in-process | same server |
 | `gcp` | AlloyDB | BigQuery | Cloud Storage | Vertex AI Vector Search | Pub/Sub | Vertex AI | Cloud Run Job | Cloud Run + API Gateway |
 
 Only `factory/adapters/__init__.py` maps a profile to backends; `tests/test_portability.py` fails if engine code
@@ -120,6 +121,22 @@ the content-addressed cache, so it is reused on replay. To use it:
 1. Install the gcloud CLI and run `gcloud auth application-default login`.
 2. Enable the Vertex AI API; set `llm.project` (and pin `llm.model`) in `config/memory.yaml`.
 3. `FACTORY_PROFILE=memory`, then `python -m factory doctor`.
+
+### Local model (`memory-local` profile)
+
+`OpenAICompatibleLLM` in `adapters/llm.py` talks to any server with the OpenAI REST contract
+(`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`): LM Studio, Ollama, vLLM. Temperature 0 and a fixed seed;
+retries on connection errors and 408/429/5xx; `<think>` blocks of reasoning models are removed. With no
+`embedding_model` it falls back to the offline hashed embeddings, so a chat model alone is enough. To use it:
+
+1. LM Studio: load a chat model (and optionally an embedding model such as nomic-embed-text), then
+   Developer → Start Server (port 1235 in `config/memory-local.yaml`; change `base_url` if yours differs).
+2. Set `llm.model` and `llm.embedding_model` in `config/memory-local.yaml` to the ids the server lists
+   (`GET http://localhost:1235/v1/models`).
+3. `FACTORY_PROFILE=memory-local`, then `python -m factory doctor` (it warns if a configured model is not loaded).
+
+Local models are slower than Gemini: s6 makes one call per knowledge document and FAQ answer (about 140 for S1),
+cached by content, so a second run with the same seed reuses the text.
 
 ### Docker
 
