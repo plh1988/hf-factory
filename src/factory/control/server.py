@@ -20,13 +20,14 @@ from typing import Any
 
 from fastapi import Depends, FastAPI
 
-from factory.control import api_engine_routes, data_engine_routes, run_routes
+from factory.capability import Builds, CapabilityRegistry, build_pack_store
+from factory.control import api_engine_routes, capability_routes, data_engine_routes, run_routes
 from factory.control.deps import TenantApiMount, get_registry, rejected_handler
 from factory.control.errors import JobRejected
 from factory.control.registry import Registry
 
 
-def create_control_app(registry: Registry) -> FastAPI:
+def create_control_app(registry: Registry, capability_layer: bool = False, load_packs: bool = True) -> FastAPI:
     """The control-plane FastAPI app: the data-engine, API-engine and runs routers over one Registry.
 
     After a successful s8 the tenant API is mounted at / on this same app (TenantApiMount), so one server serves
@@ -36,10 +37,17 @@ def create_control_app(registry: Registry) -> FastAPI:
                   description=__doc__, docs_url="/factory/docs", openapi_url="/factory/openapi.json", redoc_url=None)
     app.state.registry = registry
     app.state.tenant_api = TenantApiMount(app)
+    # capability layer: published packs are global; load them from the profile's pack store at start
+    app.state.capabilities = CapabilityRegistry(build_pack_store(registry.profile.packs))
+    if load_packs:
+        app.state.capabilities.load()
+    app.state.builds = Builds()
+    app.state.capability_layer = capability_layer  # `factory serve` passes FACTORY_CAPABILITY_LAYER
     app.add_exception_handler(JobRejected, rejected_handler)
     app.include_router(data_engine_routes.router)
     app.include_router(api_engine_routes.router)
     app.include_router(run_routes.router)
+    app.include_router(capability_routes.router)
 
     @app.get("/factory/healthz", tags=["Ops"], include_in_schema=False)
     def healthz(reg: Registry = Depends(get_registry)) -> dict[str, Any]:

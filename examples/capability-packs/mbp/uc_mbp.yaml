@@ -1,0 +1,68 @@
+# Use-case pack: MBP member billing and premiums (needs entity.premium_invoice). Written by hand for phase 1.
+id: uc.MBP
+version: 1.0.0
+kind: use_case
+description: >-
+  Member billing: premium amount due, recent invoices and payments, and the open balance. Read-only; the agent
+  never takes payment details and hands disputes and hardship cases to member billing.
+use_case:
+  code: MBP
+  name: Billing and premiums
+  group: member
+  caregiver_scope: BILLING
+  personas: [MEDICARE, COMMERCIAL, CAREGIVER]
+  can:
+    - Give the amount due and the due date
+    - List recent premium invoices and payments
+    - Explain a past-due balance and how to pay it
+  escalate:
+    - Payment disputes and refunds
+    - Hardship or payment plans
+    - Coverage termination for non-payment
+  never:
+    - Take card or bank account details
+    - Waive or change a premium
+    - Promise coverage despite non-payment
+  verification: [member ID, date of birth, ZIP code]
+  handoff_queue: MEMBER_BILLING
+  faqs:
+    - ["How much is my premium this month?", "What do I owe?", "When is my premium due?"]
+    - ["Did my last payment go through?", "Show my premium payments."]
+    - ["Why is my account past due?", "What happens if I miss a premium payment?"]
+  needs: [premium_invoice]
+  endpoints:
+    - path: /members/{member_id}/premiums
+      operation_id: list_member_premiums
+      summary: A member's premium invoices and open balance
+      description: Newest first, with amount due, amount paid and status. The summary covers all matching invoices.
+      entity: premium_invoice
+      fields:
+        - {name: invoice_number, column: invoice_number}
+        - {name: billing_month, column: billing_month}
+        - {name: due_date, column: due_dt}
+        - {name: amount_due, column: amount_due}
+        - {name: amount_paid, column: amount_paid}
+        - {name: paid_date, column: paid_dt}
+        - {name: status, column: status}
+        - {name: autopay, column: autopay}
+      query_params:
+        - {name: status, column: status, values: [PAID, DUE, PAST_DUE]}
+      order_by: [{column: billing_month, desc: true}]
+      limit: {default: 12, max: 24}
+      aggregates:
+        - {name: balance_due, fn: sum, column: amount_due, where: {status: [DUE, PAST_DUE]}}
+        - {name: invoices_past_due, fn: count, where: {status: [PAST_DUE]}}
+    - path: /members/{member_id}/premiums/{invoice_number}
+      operation_id: get_member_premium
+      summary: One premium invoice
+      entity: premium_invoice
+      item: {param: invoice_number, column: invoice_number}
+      fields:
+        - {name: invoice_number, column: invoice_number}
+        - {name: billing_month, column: billing_month}
+        - {name: due_date, column: due_dt}
+        - {name: amount_due, column: amount_due}
+        - {name: amount_paid, column: amount_paid}
+        - {name: paid_date, column: paid_dt}
+        - {name: status, column: status}
+        - {name: autopay, column: autopay}

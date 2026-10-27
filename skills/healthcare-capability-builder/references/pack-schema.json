@@ -1,5 +1,270 @@
 {
   "$defs": {
+    "AddDays": {
+      "additionalProperties": false,
+      "description": "A date expression plus `days` (a number or a per-row expression; negative moves back). Null stays null.",
+      "properties": {
+        "op": {
+          "const": "add_days",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "discriminator": {
+            "mapping": {
+              "add_days": "#/$defs/AddDays",
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
+              "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Of"
+        },
+        "days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "add_days": "#/$defs/AddDays",
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
+                  "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            }
+          ],
+          "title": "Days"
+        }
+      },
+      "required": [
+        "op",
+        "of",
+        "days"
+      ],
+      "title": "AddDays",
+      "type": "object"
+    },
+    "Aggregate": {
+      "additionalProperties": false,
+      "description": "A summary over all of the member's matching rows (not only the returned page).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "fn": {
+          "enum": [
+            "sum",
+            "count",
+            "max",
+            "min"
+          ],
+          "title": "Fn",
+          "type": "string"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "not needed for count",
+          "title": "Column"
+        },
+        "where": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "column -> values the row must have",
+          "title": "Where",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name",
+        "fn"
+      ],
+      "title": "Aggregate",
+      "type": "object"
+    },
     "AllOf": {
       "additionalProperties": false,
       "description": "Boolean AND of the expressions.",
@@ -13,19 +278,27 @@
           "items": {
             "discriminator": {
               "mapping": {
+                "add_days": "#/$defs/AddDays",
                 "all": "#/$defs/AllOf",
                 "anchor": "#/$defs/AnchorField",
                 "any": "#/$defs/AnyOf",
                 "bernoulli": "#/$defs/Bernoulli",
                 "choice": "#/$defs/Choice",
+                "column": "#/$defs/ColumnRef",
                 "const": "#/$defs/Const",
                 "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "eq": "#/$defs/Equals",
+                "format": "#/$defs/Format",
                 "if": "#/$defs/IfThen",
+                "in": "#/$defs/OneOf",
                 "integer": "#/$defs/Integer",
                 "map": "#/$defs/MapValues",
+                "money": "#/$defs/Money",
+                "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
                 "not": "#/$defs/Not",
                 "recipe": "#/$defs/RecipeFlag",
-                "row_id": "#/$defs/RowId"
+                "row_id": "#/$defs/RowId",
+                "row_index": "#/$defs/RowIndex"
               },
               "propertyName": "op"
             },
@@ -35,6 +308,12 @@
               },
               {
                 "$ref": "#/$defs/AnchorField"
+              },
+              {
+                "$ref": "#/$defs/ColumnRef"
+              },
+              {
+                "$ref": "#/$defs/RowIndex"
               },
               {
                 "$ref": "#/$defs/RecipeFlag"
@@ -49,10 +328,28 @@
                 "$ref": "#/$defs/Integer"
               },
               {
+                "$ref": "#/$defs/Money"
+              },
+              {
                 "$ref": "#/$defs/DaysBeforeAsOf"
               },
               {
+                "$ref": "#/$defs/MonthsBeforeAsOf"
+              },
+              {
+                "$ref": "#/$defs/AddDays"
+              },
+              {
+                "$ref": "#/$defs/Format"
+              },
+              {
                 "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/Equals"
+              },
+              {
+                "$ref": "#/$defs/OneOf"
               },
               {
                 "$ref": "#/$defs/AnyOf"
@@ -85,7 +382,7 @@
     },
     "AnchorField": {
       "additionalProperties": false,
-      "description": "A column of the anchor row (see ANCHOR_FIELDS).",
+      "description": "A column of the anchor row (see the anchor table).",
       "properties": {
         "op": {
           "const": "anchor",
@@ -117,19 +414,27 @@
           "items": {
             "discriminator": {
               "mapping": {
+                "add_days": "#/$defs/AddDays",
                 "all": "#/$defs/AllOf",
                 "anchor": "#/$defs/AnchorField",
                 "any": "#/$defs/AnyOf",
                 "bernoulli": "#/$defs/Bernoulli",
                 "choice": "#/$defs/Choice",
+                "column": "#/$defs/ColumnRef",
                 "const": "#/$defs/Const",
                 "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "eq": "#/$defs/Equals",
+                "format": "#/$defs/Format",
                 "if": "#/$defs/IfThen",
+                "in": "#/$defs/OneOf",
                 "integer": "#/$defs/Integer",
                 "map": "#/$defs/MapValues",
+                "money": "#/$defs/Money",
+                "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
                 "not": "#/$defs/Not",
                 "recipe": "#/$defs/RecipeFlag",
-                "row_id": "#/$defs/RowId"
+                "row_id": "#/$defs/RowId",
+                "row_index": "#/$defs/RowIndex"
               },
               "propertyName": "op"
             },
@@ -139,6 +444,12 @@
               },
               {
                 "$ref": "#/$defs/AnchorField"
+              },
+              {
+                "$ref": "#/$defs/ColumnRef"
+              },
+              {
+                "$ref": "#/$defs/RowIndex"
               },
               {
                 "$ref": "#/$defs/RecipeFlag"
@@ -153,10 +464,28 @@
                 "$ref": "#/$defs/Integer"
               },
               {
+                "$ref": "#/$defs/Money"
+              },
+              {
                 "$ref": "#/$defs/DaysBeforeAsOf"
               },
               {
+                "$ref": "#/$defs/MonthsBeforeAsOf"
+              },
+              {
+                "$ref": "#/$defs/AddDays"
+              },
+              {
+                "$ref": "#/$defs/Format"
+              },
+              {
                 "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/Equals"
+              },
+              {
+                "$ref": "#/$defs/OneOf"
               },
               {
                 "$ref": "#/$defs/AnyOf"
@@ -201,6 +530,16 @@
           "title": "Draw",
           "type": "string"
         },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row, shared by all its rows (e.g. a member's premium)",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
         "p": {
           "anyOf": [
             {
@@ -209,19 +548,27 @@
             {
               "discriminator": {
                 "mapping": {
+                  "add_days": "#/$defs/AddDays",
                   "all": "#/$defs/AllOf",
                   "anchor": "#/$defs/AnchorField",
                   "any": "#/$defs/AnyOf",
                   "bernoulli": "#/$defs/Bernoulli",
                   "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
                   "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
                   "not": "#/$defs/Not",
                   "recipe": "#/$defs/RecipeFlag",
-                  "row_id": "#/$defs/RowId"
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
                 },
                 "propertyName": "op"
               },
@@ -231,6 +578,12 @@
                 },
                 {
                   "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
                 },
                 {
                   "$ref": "#/$defs/RecipeFlag"
@@ -245,10 +598,28 @@
                   "$ref": "#/$defs/Integer"
                 },
                 {
+                  "$ref": "#/$defs/Money"
+                },
+                {
                   "$ref": "#/$defs/DaysBeforeAsOf"
                 },
                 {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
                 },
                 {
                   "$ref": "#/$defs/AnyOf"
@@ -292,6 +663,16 @@
           "description": "draw name: the random value is fixed by (seed, stream, row key, draw)",
           "pattern": "^[a-z][a-z0-9_:]*$",
           "title": "Draw",
+          "type": "string"
+        },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row, shared by all its rows (e.g. a member's premium)",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
           "type": "string"
         },
         "options": {
@@ -338,7 +719,8 @@
             "bool",
             "int",
             "float",
-            "date"
+            "date",
+            "money"
           ],
           "title": "Type",
           "type": "string"
@@ -346,19 +728,27 @@
         "gen": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -368,6 +758,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -382,10 +778,28 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -405,6 +819,18 @@
           ],
           "title": "Gen"
         },
+        "references": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/References"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "foreign key; becomes rule R-01:<entity>.<column>"
+        },
         "description": {
           "default": "",
           "title": "Description",
@@ -419,9 +845,30 @@
       "title": "Column",
       "type": "object"
     },
+    "ColumnRef": {
+      "additionalProperties": false,
+      "description": "The value of an earlier column of the same row.",
+      "properties": {
+        "op": {
+          "const": "column",
+          "title": "Op",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "name"
+      ],
+      "title": "ColumnRef",
+      "type": "object"
+    },
     "Const": {
       "additionalProperties": false,
-      "description": "A fixed value.",
+      "description": "A fixed value (null allowed).",
       "properties": {
         "op": {
           "const": "const",
@@ -453,6 +900,16 @@
           "title": "Draw",
           "type": "string"
         },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row, shared by all its rows (e.g. a member's premium)",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
         "min_days": {
           "minimum": 0,
           "title": "Min Days",
@@ -470,6 +927,156 @@
         "max_days"
       ],
       "title": "DaysBeforeAsOf",
+      "type": "object"
+    },
+    "EndpointSpec": {
+      "additionalProperties": false,
+      "description": "A member-scoped read endpoint: rows of `entity` belonging to the member in the path.",
+      "properties": {
+        "method": {
+          "const": "GET",
+          "default": "GET",
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "description": "under the base path, e.g. /members/{member_id}/premiums",
+          "pattern": "^/members/\\{member_id\\}(/[a-z][a-z0-9_-]*)+(/\\{[a-z_]+\\})?$",
+          "title": "Path",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "entity": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Entity",
+          "type": "string"
+        },
+        "member_column": {
+          "default": "member_id",
+          "description": "the entity's column holding member_id",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Member Column",
+          "type": "string"
+        },
+        "item": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ItemLookup"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/FieldMap"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "query_params": {
+          "items": {
+            "$ref": "#/$defs/QueryParam"
+          },
+          "title": "Query Params",
+          "type": "array"
+        },
+        "order_by": {
+          "items": {
+            "$ref": "#/$defs/OrderBy"
+          },
+          "title": "Order By",
+          "type": "array"
+        },
+        "limit": {
+          "$ref": "#/$defs/Limit",
+          "default": {
+            "default": 20,
+            "max": 100
+          }
+        },
+        "aggregates": {
+          "items": {
+            "$ref": "#/$defs/Aggregate"
+          },
+          "title": "Aggregates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "operation_id",
+        "summary",
+        "entity",
+        "fields"
+      ],
+      "title": "EndpointSpec",
+      "type": "object"
+    },
+    "EntityPack": {
+      "additionalProperties": false,
+      "description": "A capability pack that adds one entity.",
+      "properties": {
+        "id": {
+          "pattern": "^entity\\.[a-z][a-z0-9_]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Version",
+          "type": "string"
+        },
+        "kind": {
+          "const": "entity",
+          "default": "entity",
+          "title": "Kind",
+          "type": "string"
+        },
+        "core": {
+          "default": false,
+          "description": "part of the built-in catalog (may use the anchor's random streams)",
+          "title": "Core",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "entity": {
+          "$ref": "#/$defs/EntitySpec"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/RuleSpec"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "entity"
+      ],
+      "title": "EntityPack",
       "type": "object"
     },
     "EntitySpec": {
@@ -493,7 +1100,9 @@
           "$ref": "#/$defs/Rows",
           "default": {
             "per_anchor": "zero_or_one",
-            "when": null
+            "when": null,
+            "count": null,
+            "slots": null
           }
         },
         "random_stream": {
@@ -524,31 +1133,39 @@
       "title": "EntitySpec",
       "type": "object"
     },
-    "IfThen": {
+    "Equals": {
       "additionalProperties": false,
-      "description": "`then` where `cond` is true, otherwise `else`.",
+      "description": "True where `of` equals `value`.",
       "properties": {
         "op": {
-          "const": "if",
+          "const": "eq",
           "title": "Op",
           "type": "string"
         },
-        "cond": {
+        "of": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -558,6 +1175,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -572,10 +1195,186 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Of"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "op",
+        "of",
+        "value"
+      ],
+      "title": "Equals",
+      "type": "object"
+    },
+    "FieldMap": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "name in the API response",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "column"
+      ],
+      "title": "FieldMap",
+      "type": "object"
+    },
+    "Format": {
+      "additionalProperties": false,
+      "description": "Text from a template: {field} for anchor fields and earlier columns, {index} for the row index,\nwith Python format specs, e.g. \"INV-{member_number}-{index:02d}\".",
+      "properties": {
+        "op": {
+          "const": "format",
+          "title": "Op",
+          "type": "string"
+        },
+        "template": {
+          "title": "Template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "template"
+      ],
+      "title": "Format",
+      "type": "object"
+    },
+    "IfThen": {
+      "additionalProperties": false,
+      "description": "`then` where `cond` is true, otherwise `else`.",
+      "properties": {
+        "op": {
+          "const": "if",
+          "title": "Op",
+          "type": "string"
+        },
+        "cond": {
+          "discriminator": {
+            "mapping": {
+              "add_days": "#/$defs/AddDays",
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
+              "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -598,19 +1397,27 @@
         "then": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -620,6 +1427,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -634,10 +1447,28 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -660,19 +1491,27 @@
         "else": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -682,6 +1521,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -696,10 +1541,28 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -743,6 +1606,16 @@
           "title": "Draw",
           "type": "string"
         },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row, shared by all its rows (e.g. a member's premium)",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
         "low": {
           "title": "Low",
           "type": "integer"
@@ -761,6 +1634,48 @@
       "title": "Integer",
       "type": "object"
     },
+    "ItemLookup": {
+      "additionalProperties": false,
+      "description": "Single-row endpoint: the path parameter `param` must match `column` (404 RESOURCE_NOT_FOUND otherwise).",
+      "properties": {
+        "param": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Param",
+          "type": "string"
+        },
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        }
+      },
+      "required": [
+        "param",
+        "column"
+      ],
+      "title": "ItemLookup",
+      "type": "object"
+    },
+    "Limit": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20,
+          "title": "Default"
+        },
+        "max": {
+          "default": 100,
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Max",
+          "type": "integer"
+        }
+      },
+      "title": "Limit",
+      "type": "object"
+    },
     "MapValues": {
       "additionalProperties": false,
       "description": "Look up each row's value of `of` in `values`; rows without a match get `default`.",
@@ -773,19 +1688,27 @@
         "of": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -795,6 +1718,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -809,10 +1738,28 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -850,6 +1797,360 @@
       "title": "MapValues",
       "type": "object"
     },
+    "Money": {
+      "additionalProperties": false,
+      "description": "Uniform amount in whole cents between `low` and `high` dollars (numbers or per-row expressions). Use with\ncolumn type money.",
+      "properties": {
+        "op": {
+          "const": "money",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row, shared by all its rows (e.g. a member's premium)",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "add_days": "#/$defs/AddDays",
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
+                  "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            }
+          ],
+          "title": "Low"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "add_days": "#/$defs/AddDays",
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
+                  "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            }
+          ],
+          "title": "High"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "low",
+        "high"
+      ],
+      "title": "Money",
+      "type": "object"
+    },
+    "MonthsBeforeAsOf": {
+      "additionalProperties": false,
+      "description": "The first day of the month `months` months before the as-of month (0 = the as-of month).",
+      "properties": {
+        "op": {
+          "const": "months_before_as_of",
+          "title": "Op",
+          "type": "string"
+        },
+        "months": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "add_days": "#/$defs/AddDays",
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
+                  "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            }
+          ],
+          "title": "Months"
+        }
+      },
+      "required": [
+        "op",
+        "months"
+      ],
+      "title": "MonthsBeforeAsOf",
+      "type": "object"
+    },
     "Not": {
       "additionalProperties": false,
       "description": "Boolean NOT of the expression.",
@@ -862,19 +2163,27 @@
         "of": {
           "discriminator": {
             "mapping": {
+              "add_days": "#/$defs/AddDays",
               "all": "#/$defs/AllOf",
               "anchor": "#/$defs/AnchorField",
               "any": "#/$defs/AnyOf",
               "bernoulli": "#/$defs/Bernoulli",
               "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
               "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
               "not": "#/$defs/Not",
               "recipe": "#/$defs/RecipeFlag",
-              "row_id": "#/$defs/RowId"
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
             },
             "propertyName": "op"
           },
@@ -884,6 +2193,12 @@
             },
             {
               "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
             },
             {
               "$ref": "#/$defs/RecipeFlag"
@@ -898,10 +2213,28 @@
               "$ref": "#/$defs/Integer"
             },
             {
+              "$ref": "#/$defs/Money"
+            },
+            {
               "$ref": "#/$defs/DaysBeforeAsOf"
             },
             {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
             },
             {
               "$ref": "#/$defs/AnyOf"
@@ -929,6 +2262,187 @@
       "title": "Not",
       "type": "object"
     },
+    "OneOf": {
+      "additionalProperties": false,
+      "description": "True where `of` is one of `values`.",
+      "properties": {
+        "op": {
+          "const": "in",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "discriminator": {
+            "mapping": {
+              "add_days": "#/$defs/AddDays",
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "column": "#/$defs/ColumnRef",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "eq": "#/$defs/Equals",
+              "format": "#/$defs/Format",
+              "if": "#/$defs/IfThen",
+              "in": "#/$defs/OneOf",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "money": "#/$defs/Money",
+              "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId",
+              "row_index": "#/$defs/RowIndex"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/ColumnRef"
+            },
+            {
+              "$ref": "#/$defs/RowIndex"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MonthsBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/AddDays"
+            },
+            {
+              "$ref": "#/$defs/Format"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Equals"
+            },
+            {
+              "$ref": "#/$defs/OneOf"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Of"
+        },
+        "values": {
+          "items": {},
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "of",
+        "values"
+      ],
+      "title": "OneOf",
+      "type": "object"
+    },
+    "OrderBy": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        },
+        "desc": {
+          "default": false,
+          "title": "Desc",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "column"
+      ],
+      "title": "OrderBy",
+      "type": "object"
+    },
+    "QueryParam": {
+      "additionalProperties": false,
+      "description": "An optional filter: ?<name>=<value> keeps rows whose column equals the value (case-insensitive).",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "allowed values (others are 422)",
+          "title": "Values"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "column"
+      ],
+      "title": "QueryParam",
+      "type": "object"
+    },
     "RecipeFlag": {
       "additionalProperties": false,
       "description": "True where the anchor row's scenario recipe sets `flag` (a Scenario field in scenarios.py).",
@@ -950,6 +2464,27 @@
       "title": "RecipeFlag",
       "type": "object"
     },
+    "References": {
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Entity",
+          "type": "string"
+        },
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity",
+        "column"
+      ],
+      "title": "References",
+      "type": "object"
+    },
     "RowId": {
       "additionalProperties": false,
       "description": "The row's primary key: UUIDv5(dataset_id, entity, seed, row key).",
@@ -966,12 +2501,31 @@
       "title": "RowId",
       "type": "object"
     },
+    "RowIndex": {
+      "additionalProperties": false,
+      "description": "The row's position within its anchor: 0, 1, 2, ... (always 0 for zero_or_one entities).",
+      "properties": {
+        "op": {
+          "const": "row_index",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "RowIndex",
+      "type": "object"
+    },
     "Rows": {
       "additionalProperties": false,
       "properties": {
         "per_anchor": {
-          "const": "zero_or_one",
           "default": "zero_or_one",
+          "enum": [
+            "zero_or_one",
+            "many"
+          ],
           "title": "Per Anchor",
           "type": "string"
         },
@@ -980,19 +2534,27 @@
             {
               "discriminator": {
                 "mapping": {
+                  "add_days": "#/$defs/AddDays",
                   "all": "#/$defs/AllOf",
                   "anchor": "#/$defs/AnchorField",
                   "any": "#/$defs/AnyOf",
                   "bernoulli": "#/$defs/Bernoulli",
                   "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
                   "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
                   "not": "#/$defs/Not",
                   "recipe": "#/$defs/RecipeFlag",
-                  "row_id": "#/$defs/RowId"
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
                 },
                 "propertyName": "op"
               },
@@ -1002,6 +2564,12 @@
                 },
                 {
                   "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
                 },
                 {
                   "$ref": "#/$defs/RecipeFlag"
@@ -1016,10 +2584,28 @@
                   "$ref": "#/$defs/Integer"
                 },
                 {
+                  "$ref": "#/$defs/Money"
+                },
+                {
                   "$ref": "#/$defs/DaysBeforeAsOf"
                 },
                 {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
                 },
                 {
                   "$ref": "#/$defs/AnyOf"
@@ -1043,53 +2629,353 @@
             }
           ],
           "default": null,
-          "description": "anchor rows that get a row (all when omitted)",
+          "description": "anchor rows that get rows (all when omitted)",
           "title": "When"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "add_days": "#/$defs/AddDays",
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "column": "#/$defs/ColumnRef",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "eq": "#/$defs/Equals",
+                  "format": "#/$defs/Format",
+                  "if": "#/$defs/IfThen",
+                  "in": "#/$defs/OneOf",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "money": "#/$defs/Money",
+                  "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId",
+                  "row_index": "#/$defs/RowIndex"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/ColumnRef"
+                },
+                {
+                  "$ref": "#/$defs/RowIndex"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/Money"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MonthsBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/AddDays"
+                },
+                {
+                  "$ref": "#/$defs/Format"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Equals"
+                },
+                {
+                  "$ref": "#/$defs/OneOf"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "many: rows per anchor row (clipped to slots)",
+          "title": "Count"
+        },
+        "slots": {
+          "anyOf": [
+            {
+              "maximum": 64,
+              "minimum": 2,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "many: key slots reserved per anchor row; never change it",
+          "title": "Slots"
         }
       },
       "title": "Rows",
       "type": "object"
+    },
+    "RuleSpec": {
+      "additionalProperties": false,
+      "description": "A data rule: SQL returning one number, the count of violating rows (0 = pass).",
+      "properties": {
+        "id": {
+          "description": "family letter first (R/T/F/C/P/A), e.g. F-PREMIUM-01",
+          "pattern": "^[RTFCPA]-[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        },
+        "needs": {
+          "description": "tables the rule reads (it is skipped without them)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "sql"
+      ],
+      "title": "RuleSpec",
+      "type": "object"
+    },
+    "UseCasePack": {
+      "additionalProperties": false,
+      "description": "A capability pack that adds an API use case.",
+      "properties": {
+        "id": {
+          "pattern": "^uc\\.[A-Z]{3}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Version",
+          "type": "string"
+        },
+        "kind": {
+          "const": "use_case",
+          "default": "use_case",
+          "title": "Kind",
+          "type": "string"
+        },
+        "core": {
+          "default": false,
+          "title": "Core",
+          "type": "boolean"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "use_case": {
+          "$ref": "#/$defs/UseCaseSpec"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "use_case"
+      ],
+      "title": "UseCasePack",
+      "type": "object"
+    },
+    "UseCaseSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "pattern": "^[A-Z]{3}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "group": {
+          "const": "member",
+          "default": "member",
+          "title": "Group",
+          "type": "string"
+        },
+        "caregiver_scope": {
+          "description": "scope a caregiver's authorization must include (R-06)",
+          "pattern": "^[A-Z_]+$",
+          "title": "Caregiver Scope",
+          "type": "string"
+        },
+        "personas": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Personas",
+          "type": "array"
+        },
+        "can": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Can",
+          "type": "array"
+        },
+        "escalate": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Escalate",
+          "type": "array"
+        },
+        "never": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Never",
+          "type": "array"
+        },
+        "verification": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Verification",
+          "type": "array"
+        },
+        "handoff_queue": {
+          "pattern": "^[A-Z_]+$",
+          "title": "Handoff Queue",
+          "type": "string"
+        },
+        "faqs": {
+          "description": "question variants, one list per `can` item",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "minItems": 1,
+          "title": "Faqs",
+          "type": "array"
+        },
+        "needs": {
+          "description": "tables the endpoints read (s8 checks they were generated)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Needs",
+          "type": "array"
+        },
+        "knowledge_slot": {
+          "anyOf": [
+            {
+              "maximum": 98,
+              "minimum": 10,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "knowledge-asset slot; default derived from the code",
+          "title": "Knowledge Slot"
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/EndpointSpec"
+          },
+          "minItems": 1,
+          "title": "Endpoints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "caregiver_scope",
+        "personas",
+        "can",
+        "escalate",
+        "never",
+        "verification",
+        "handoff_queue",
+        "faqs",
+        "needs",
+        "endpoints"
+      ],
+      "title": "UseCaseSpec",
+      "type": "object"
     }
   },
-  "additionalProperties": false,
-  "description": "A capability pack. Phase 0 packs carry one entity.",
-  "properties": {
-    "id": {
-      "pattern": "^entity\\.[a-z][a-z0-9_]*$",
-      "title": "Id",
-      "type": "string"
+  "discriminator": {
+    "mapping": {
+      "entity": "#/$defs/EntityPack",
+      "use_case": "#/$defs/UseCasePack"
     },
-    "version": {
-      "pattern": "^\\d+\\.\\d+\\.\\d+$",
-      "title": "Version",
-      "type": "string"
-    },
-    "kind": {
-      "const": "entity",
-      "default": "entity",
-      "title": "Kind",
-      "type": "string"
-    },
-    "core": {
-      "default": false,
-      "description": "part of the built-in catalog (may use the anchor's random streams)",
-      "title": "Core",
-      "type": "boolean"
-    },
-    "description": {
-      "default": "",
-      "title": "Description",
-      "type": "string"
-    },
-    "entity": {
-      "$ref": "#/$defs/EntitySpec"
-    }
+    "propertyName": "kind"
   },
-  "required": [
-    "id",
-    "version",
-    "entity"
-  ],
-  "title": "Pack",
-  "type": "object"
+  "oneOf": [
+    {
+      "$ref": "#/$defs/EntityPack"
+    },
+    {
+      "$ref": "#/$defs/UseCasePack"
+    }
+  ]
 }

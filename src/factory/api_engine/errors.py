@@ -27,6 +27,7 @@ class ErrorCode(StrEnum):
     APPEAL_NOT_FOUND = "APPEAL_NOT_FOUND"
     PROVIDER_NOT_FOUND = "PROVIDER_NOT_FOUND"
     NO_COVERAGE = "NO_COVERAGE"
+    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"  # generic: an item of a capability-pack endpoint
     # 409 business rule
     NO_ACTIVE_COVERAGE = "NO_ACTIVE_COVERAGE"
     NOT_PARTICIPATING = "NOT_PARTICIPATING"
@@ -45,6 +46,7 @@ class ErrorCode(StrEnum):
     MEMBER_IDENTIFIERS_REQUIRED = "MEMBER_IDENTIFIERS_REQUIRED"
     LOCATION_REQUIRED = "LOCATION_REQUIRED"
     UNKNOWN_SPECIALTY = "UNKNOWN_SPECIALTY"
+    INVALID_PARAMETER = "INVALID_PARAMETER"  # generic: a query parameter value outside its allowed values
     # 429 limits
     RATE_LIMITED = "RATE_LIMITED"
     MINIMUM_NECESSARY = "MINIMUM_NECESSARY"  # too many distinct members in a short window
@@ -61,12 +63,13 @@ _STATUS = {
     **dict.fromkeys([ErrorCode.VERIFICATION_FAILED, ErrorCode.SCOPE_NOT_AUTHORIZED, ErrorCode.CAREGIVER_NOT_VERIFIED,
                      ErrorCode.CONSENT_EXPIRED], 403),
     **dict.fromkeys([ErrorCode.MEMBER_NOT_FOUND, ErrorCode.CLAIM_NOT_FOUND, ErrorCode.AUTH_NOT_FOUND, ErrorCode.APPEAL_NOT_FOUND,
-                     ErrorCode.PROVIDER_NOT_FOUND, ErrorCode.NO_COVERAGE], 404),
+                     ErrorCode.PROVIDER_NOT_FOUND, ErrorCode.NO_COVERAGE, ErrorCode.RESOURCE_NOT_FOUND], 404),
     **dict.fromkeys([ErrorCode.NO_ACTIVE_COVERAGE, ErrorCode.NOT_PARTICIPATING, ErrorCode.NOT_A_PCP, ErrorCode.ALREADY_PCP,
                      ErrorCode.PANEL_CLOSED, ErrorCode.OUTSIDE_ACCESS_STANDARD, ErrorCode.SLOT_UNAVAILABLE, ErrorCode.ALREADY_BOOKED,
                      ErrorCode.NOT_DENIED, ErrorCode.NOT_APPEALABLE, ErrorCode.APPEAL_EXISTS, ErrorCode.DEADLINE_PASSED,
                      ErrorCode.DOCUMENT_NOT_REQUESTED], 409),
-    **dict.fromkeys([ErrorCode.MEMBER_IDENTIFIERS_REQUIRED, ErrorCode.LOCATION_REQUIRED, ErrorCode.UNKNOWN_SPECIALTY], 422),
+    **dict.fromkeys([ErrorCode.MEMBER_IDENTIFIERS_REQUIRED, ErrorCode.LOCATION_REQUIRED, ErrorCode.UNKNOWN_SPECIALTY,
+                     ErrorCode.INVALID_PARAMETER], 422),
     **dict.fromkeys([ErrorCode.RATE_LIMITED, ErrorCode.MINIMUM_NECESSARY], 429),
     ErrorCode.INJECTED_FAULT: 503,
 }

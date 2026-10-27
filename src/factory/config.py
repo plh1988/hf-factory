@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     profile: ProfileName = "memory-offline"
     s2_json: str | None = None  # FACTORY_S2_JSON: s2 output inline (Cloud Run tasks/services get it this way)
     config_dir: Path | None = None  # FACTORY_CONFIG_DIR: where profile yaml files live when installed (e.g. /app/config)
+    capability_layer: bool = False  # FACTORY_CAPABILITY_LAYER: payload gaps start a capability build (202) instead of a 4xx
     model_config = SettingsConfigDict(env_prefix="FACTORY_", env_file=REPO_ROOT / ".env", extra="ignore")
 
 
@@ -52,6 +53,7 @@ class Profile(BaseModel):
     llm: AdapterConfig
     executor: AdapterConfig = AdapterConfig(kind="local")
     analytics: AdapterConfig = AdapterConfig(kind="tables")  # bigquery in the gcp profile
+    packs: AdapterConfig = AdapterConfig(kind="memory")  # published capability packs: memory | local | gcs
     limits: dict[str, int] = {}  # e.g. max_members / max_claims for in-memory profiles
 
 

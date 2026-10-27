@@ -7,10 +7,11 @@ import time
 import uuid
 from typing import Any, Callable
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
 from factory.contracts import DataJob
+from factory.control.capability_routes import build_started
 from factory.control.deps import TenantApiMount, get_registry, get_tenant_api
 from factory.control.errors import JobRejected, RejectCode
 from factory.control.registry import Registry, Run
@@ -48,11 +49,15 @@ def stage_handler(stage: str) -> Callable[..., Any]:
     """The POST handler for one data-engine stage."""
     job_name = STAGES[stage].job
 
-    def handler(job: DataJob, tenant: str | None = Query(None, description="Override tenant resolution"),
+    def handler(job: DataJob, request: Request, tenant: str | None = Query(None, description="Override tenant resolution"),
                 registry: Registry = Depends(get_registry), tenant_api: TenantApiMount = Depends(get_tenant_api)) -> Any:
         with registry.lock:  # one job at a time: stages share in-memory state
-            tid, run, notes = _validate(registry, stage, job, tenant)
             raw = job.model_dump(mode="json", exclude_none=True)
+            if request.app.state.capability_layer:  # gaps start a capability build instead of a rejection
+                started = build_started(request.app.state.builds, stage, raw)
+                if started is not None:
+                    return started
+            tid, run, notes = _validate(registry, stage, job, tenant)
             run.stores.blobs.put(f"jobs/{stage}.json", json.dumps(raw, indent=2).encode(), "application/json")
             try:
                 res = run_stage(run.ctx, stage, rules=job.rules, rule_sets=job.rule_sets,

@@ -8,14 +8,22 @@ Every column's `gen` (and `rows.when`) is one expression. Expressions nest: wher
 
 | op | Purpose | Parameters |
 |---|---|---|
-| `const` | A fixed value. | `value`: any value |
-| `anchor` | A column of the anchor row (see ANCHOR_FIELDS). | `field`: string |
+| `const` | A fixed value (null allowed). | `value`: any value |
+| `anchor` | A column of the anchor row (see the anchor table). | `field`: string |
+| `column` | The value of an earlier column of the same row. | `name`: string |
+| `row_index` | The row's position within its anchor: 0, 1, 2, ... (always 0 for zero_or_one entities). | - |
 | `recipe` | True where the anchor row's scenario recipe sets `flag` (a Scenario field in scenarios.py). | `flag`: string |
-| `choice` | One of `options`, weighted by `weights` (uniform when omitted). Options are listed explicitly, in order. | `draw`: string, `options`: list, `weights`: list of numbers, optional |
-| `bernoulli` | True with probability p (a number, or an expression giving one per row). | `draw`: string, `p`: number or Expr |
-| `integer` | Uniform integer in [low, high). | `draw`: string, `low`: integer, `high`: integer |
-| `days_before_as_of` | A date: as_of minus a uniform number of days in [min_days, max_days). Generators never read the clock. | `draw`: string, `min_days`: integer, `max_days`: integer |
+| `choice` | One of `options`, weighted by `weights` (uniform when omitted). Options are listed explicitly, in order. | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `options`: list, `weights`: list of numbers, optional |
+| `bernoulli` | True with probability p (a number, or an expression giving one per row). | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `p`: number or Expr |
+| `integer` | Uniform integer in [low, high). | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `low`: integer, `high`: integer |
+| `money` | Uniform amount in whole cents between `low` and `high` dollars (numbers or per-row expressions). Use with column type money. | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `low`: number or Expr, `high`: number or Expr |
+| `days_before_as_of` | A date: as_of minus a uniform number of days in [min_days, max_days). Generators never read the clock. | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `min_days`: integer, `max_days`: integer |
+| `months_before_as_of` | The first day of the month `months` months before the as-of month (0 = the as-of month). | `months`: integer or Expr |
+| `add_days` | A date expression plus `days` (a number or a per-row expression; negative moves back). Null stays null. | `of`: Expr, `days`: integer or Expr |
+| `format` | Text from a template: {field} for anchor fields and earlier columns, {index} for the row index, with Python format specs, e.g. "INV-{member_number}-{index:02d}". | `template`: string |
 | `map` | Look up each row's value of `of` in `values`; rows without a match get `default`. | `of`: Expr, `values`: object, `default`: any value, optional |
+| `eq` | True where `of` equals `value`. | `of`: Expr, `value`: any value |
+| `in` | True where `of` is one of `values`. | `of`: Expr, `values`: list |
 | `any` | Boolean OR of the expressions. | `of`: list of Expr |
 | `all` | Boolean AND of the expressions. | `of`: list of Expr |
 | `not` | Boolean NOT of the expression. | `of`: Expr |
@@ -26,7 +34,12 @@ Every column's `gen` (and `rows.when`) is one expression. Expressions nest: wher
 
 | Anchor | Stage | Fields a pack can read with `{op: anchor, field: ...}` |
 |---|---|---|
-| `member` | s4 | `member_id`, `member_number`, `lob`, `plan_id`, `sex` |
+| `member` | s4 | `member_id`, `member_number`, `lob`, `plan_id`, `sex`, `premium_status` |
 
-Column types: `string`, `bool`, `int`, `float`, `date`. The engine adds `is_synthetic`, `tenant_id` and
-`scenario_id` (P-01) to every row; rows inherit the anchor row's scenario tag.
+Column types: `string`, `bool`, `int`, `float`, `date`, `money` (integer cents, stored as DECIMAL(14,2)).
+The engine adds `is_synthetic`, `tenant_id` and `scenario_id` (P-01) to every row; rows inherit the anchor
+row's scenario tag.
+
+Rows: `zero_or_one` (row key = anchor key) or `many` with `count` and `slots` (row key = anchor key x slots
++ row index). `rows.when` and `rows.count` are evaluated per anchor row and cannot use `column`, `row_index`
+or `format`.

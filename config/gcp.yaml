@@ -16,6 +16,8 @@ analytics:                           # claims domain mirrored to BigQuery (spec:
   location: US
 blobs:      {kind: gcs, bucket: "${s2.docs_bucket}"}
 text_cache: {kind: gcs, bucket: "${s2.docs_bucket}", prefix: cache/text}
+# Published capability packs are global (all tenants): a factory-level bucket, not a tenant docs bucket.
+packs:      {kind: gcs, bucket: your-factory-packs-bucket, prefix: packs}
 vectors:
   kind: vertex_vector_search
   project: "${s2.project_id}"

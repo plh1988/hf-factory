@@ -9,6 +9,7 @@ blobs:      {kind: local, root: out}
 vectors:    {kind: numpy}
 events:     {kind: log}
 text_cache: {kind: local, root: out/cache/text}
+packs:      {kind: local, root: out/packs}     # published capability packs (global, survive restarts)
 deployer:   {kind: local, host: 127.0.0.1, port: 8080}
 llm:
   kind: openai_compatible

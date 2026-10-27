@@ -460,3 +460,36 @@ class BigQueryAnalyticsStore:
     def health(self) -> str:
         self.client.get_dataset(f"{self.project}.{self.dataset}")
         return f"ok (BigQuery {self.project}.{self.dataset}, {len(self.entities)} entities mirrored)"
+
+
+# ================================================================ capability packs
+def _pack_file(doc: dict) -> str:
+    return f"{doc['id']}@{doc['version']}.json"
+
+
+class GCSPackStore:
+    """gs://<bucket>/<prefix>/<id>@<version>.json. Profile keys: bucket, prefix (packs)."""
+
+    def __init__(self, cfg: AdapterConfig) -> None:
+        self.cfg, self.prefix = cfg, str(cfg.get("prefix", "packs")).strip("/") + "/"
+        self._b = None
+
+    @property
+    def _bucket(self):
+        if self._b is None:  # connect on first use
+            from google.cloud import storage
+
+            self._b = storage.Client().bucket(self.cfg.get("bucket"))
+        return self._b
+
+    def put(self, doc: dict[str, Any]) -> str:
+        self._bucket.blob(self.prefix + _pack_file(doc)).upload_from_string(json.dumps(doc, sort_keys=True), content_type="application/json")
+        return f"gs://{self._bucket.name}/{self.prefix}{_pack_file(doc)}"
+
+    def all(self) -> list[dict[str, Any]]:
+        blobs = sorted(self._bucket.client.list_blobs(self._bucket, prefix=self.prefix), key=lambda b: b.name)
+        return [json.loads(b.download_as_bytes()) for b in blobs if b.name.endswith(".json")]
+
+    def delete(self, pack_id: str) -> None:
+        for b in self._bucket.client.list_blobs(self._bucket, prefix=f"{self.prefix}{pack_id}@"):
+            b.delete()

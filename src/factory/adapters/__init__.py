@@ -40,6 +40,22 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
     }
 
 
+def build_pack_store(cfg: AdapterConfig | None) -> Any:
+    """The global store of published capability packs (not per tenant): memory | local | gcs."""
+    from factory.adapters import local_fs, memory
+
+    kind = cfg.kind if cfg is not None else "memory"
+    if kind == "memory":
+        return memory.MemoryPackStore()
+    if kind == "local":
+        return local_fs.LocalPackStore(cfg)
+    if kind == "gcs":
+        from factory.adapters import gcp as g  # Google Cloud libraries load only when used
+
+        return g.GCSPackStore(cfg)
+    raise ValueError(f"unknown packs kind {kind!r}")
+
+
 def build_stores(profile: Profile, namespace: str | None = None) -> Stores:
     """Construct every adapter of a profile for one tenant namespace.
 

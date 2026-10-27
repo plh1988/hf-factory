@@ -1,6 +1,6 @@
 # Agentic capability layer: plan
 
-Status: **phase 0 done** (§12); phases 1–4 planned. Owner: factory team.
+Status: **phases 0 and 1 done** (§12); phases 2–4 planned. Owner: factory team.
 
 ## 1. Problem
 
@@ -280,3 +280,33 @@ generated references are out of date.
 - Pack YAML ships as package data (`pyproject.toml`), so the installed package and the Docker image carry it.
 - Phase 0 supports member-anchored entities with zero or one row per member; more rows per anchor (key slots),
   other anchors, rules, recipes and API parts are phase 1.
+
+### Phase 1 — done
+
+| Delivered | Where |
+|---|---|
+| Pack format v2: `use_case` packs (member-scoped read endpoints with filters, ordering, limits, summaries and item lookups; FAQ/SOP content; caregiver scope; `needs`); entity packs with `many` rows (key slots), foreign keys (`references`), rules; 8 more building blocks (`column`, `row_index`, `money`, `months_before_as_of`, `add_days`, `format`, `eq`, `in`) and `per: anchor` draws | `data_engine/packs/model.py`, `engine.py` |
+| Active-pack list read by the engines; catalog registration in one place; fixed knowledge slots (core use cases 0–9, packs 10–98, so asset ids never shift) | `data_engine/packs/__init__.py`, `catalog.py` |
+| Generic API: router with typed response models, member and caregiver checks, repository reads with validated identifiers and bound values; four generated contract tests per endpoint; two generic error codes (`RESOURCE_NOT_FOUND`, `INVALID_PARAMETER`) | `api_engine/generic.py`, `repository.py`, `errors.py` |
+| Pack rules and foreign keys in s7; pack pins in the manifest and `data_spec_hash` | `rules.py`, `stages/s7_validate.py` |
+| Capability registry: G1 static checks, sandbox gates G2–G5, automatic activation, rollback on failure, removal with dependency check; pack stores memory / local / GCS | `capability/registry.py`, `gates.py`, `sandbox.py`, `adapters/` |
+| Gap detection, preflight, builds (deduplicated by gap signature), `202 CAPABILITY_BUILD_STARTED` fallback behind `FACTORY_CAPABILITY_LAYER` | `capability/gaps.py`, `control/capability_routes.py` |
+| MBP written by hand: `entity.premium_invoice` (six monthly invoices for non-Medicaid members, one premium per member, three rules) and `uc.MBP` (list and item endpoints) | `examples/capability-packs/mbp/` |
+| Skill v0.2 (use-case packs, rows, rules, gates) with the MBP packs as examples; `scripts/publish_pack.py` | `skills/healthcare-capability-builder/`, `scripts/` |
+
+**Acceptance.** `tests/test_capability.py`: with the layer on, preflight reports `premium_invoice` and `MBP`, the s4
+payload gets `202`; after publishing the two packs (all gates pass, 16/16 sandbox contract tests) the build is
+`READY` and the same payloads run end to end — s7 passes with the pack rules, s8 deploys with the eight MBP contract
+tests passing, and the endpoints answer like built-in ones (six invoices with one premium per member, filters,
+item lookup, Medicaid members without invoices, caregiver without BILLING scope refused). Checked again against a
+running `factory serve`. The regression snapshot of S1–S4 is identical to phase 0.
+
+**Decisions taken in phase 1**
+
+- Gates run in one sandbox tenant name: `tenant_id` and the dataset id are part of every row and id, so only runs
+  with the same name are comparable.
+- Rule SQL is checked with a conservative pattern check (single `SELECT count(*)`, no writes, no file-reading
+  functions, no URLs); phase 2, when agents write SQL, replaces it with a parser.
+- Pack stores are adapters (only `adapters/` may import cloud libraries); `factory serve` reads
+  `FACTORY_CAPABILITY_LAYER` (only `config.py` and `cli.py` read the environment).
+- Phase 1 builds wait for packs to be published by hand; phase 2 plugs the agent builder into `Builds.start()`.

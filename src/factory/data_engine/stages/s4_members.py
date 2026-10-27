@@ -94,6 +94,7 @@ class MemberBatch:
     # ---- set by _write_enrollment (current span)
     eff: np.ndarray = _
     term: np.ndarray = _
+    premium_status: np.ndarray = _  # current span: PAID | DUE | PAST_DUE | NA (Medicaid)
 
     @property
     def n(self) -> int:
@@ -227,7 +228,7 @@ def _write_enrollment(ctx: GenContext, b: MemberBatch) -> None:
         "cob_flag": pa.array(np.concatenate([rr.bernoulli("cob", 0.05), np.zeros(len(p_idx), bool)])),
         "retro_change_flag": pa.array(np.concatenate([retro, np.zeros(len(p_idx), bool)])),
     }, scenario=np.concatenate([scen, scen[prior]]))
-    b.eff, b.term = eff, term
+    b.eff, b.term, b.premium_status = eff, term, premium
 
 
 def _write_pcp_assignments(ctx: GenContext, b: MemberBatch, pcps: dict[str, list[str]]) -> None:
@@ -313,7 +314,7 @@ def _write_member_packs(ctx: GenContext, b: MemberBatch) -> None:
         return
     frame = packs.AnchorFrame("member", b.idx, b.scen, {
         "member_id": b.member_id, "member_number": np.array(b.member_no, dtype=object), "lob": b.lob,
-        "plan_id": b.plan_id, "sex": b.sex})
+        "plan_id": b.plan_id, "sex": b.sex, "premium_status": b.premium_status})
     for pk in member_packs:
         packs.generate(ctx, pk, frame)
 

@@ -9,7 +9,7 @@ All data is synthetic. Infrastructure target is GCP; locally everything runs in 
 
 ![Architecture: REST control plane, Data Engine s3-s7, API Engine s8, ports and adapters, runtimes](docs/architecture.svg)
 
-Design documents: [Data Engine](docs/data-engine-design.md) · [API Engine](docs/api-engine-design.md) · [Agentic capability layer (plan, phase 0 done)](docs/agentic-capability-layer.md) · Live demo: [step-by-step guide](docs/demo-guide.md)
+Design documents: [Data Engine](docs/data-engine-design.md) · [API Engine](docs/api-engine-design.md) · [Agentic capability layer (plan, phases 0–1 done)](docs/agentic-capability-layer.md) · Live demo: [step-by-step guide](docs/demo-guide.md)
 
 ## Quick start (Windows)
 
@@ -183,6 +183,30 @@ docker run --rm -p 8080:8080 hf-factory
 Resource names come from the s2 output (`config/s2_output_gcp.example.json` lists every field); start with
 `factory --s2 <file> serve`. Remote tasks and the API service receive it as `FACTORY_S2_JSON`.
 
+## Capability packs (agentic capability layer)
+
+New entities and API use cases can be added as **capability packs**: declarative YAML run by generic engine code,
+with no Python change. Phase 1 packs are written by hand; phase 2 agents will write them from payload names
+([plan](docs/agentic-capability-layer.md), [skill](skills/healthcare-capability-builder/SKILL.md)). Worked example:
+member billing (MBP) in `examples/capability-packs/mbp/`.
+
+1. Start the server with the layer on: `FACTORY_CAPABILITY_LAYER=true` (in `.env`), then `python -m factory serve`.
+2. Preflight the stage payloads: `POST /factory/capabilities/preflight` with `{"payloads": {"s3": {...}, ..., "s8": {...}}}`.
+   The answer is `READY`, or `PENDING_PACKS` with the gaps (unknown entities, use cases, endpoints, scenarios) and a
+   `build_id`. A stage payload sent with gaps gets `202 CAPABILITY_BUILD_STARTED` and the same build.
+3. Publish packs: `python scripts/publish_pack.py examples/capability-packs/mbp/premium_invoice.yaml examples/capability-packs/mbp/uc_mbp.yaml`
+   (or `POST /factory/capabilities/packs` with the pack as JSON). Each pack passes sandbox gates before it is active:
+   G1 static checks, G2 a small run with its rules, G3 determinism across shard counts, G4 no other entity changes,
+   G5 all generated contract tests (four per endpoint). A failed gate leaves nothing active (`409` with the details).
+4. `GET /factory/capabilities/builds/{build_id}` turns `READY`; run s3..s8 as usual, e.g. s4 with `premium_invoice`
+   in `entities` and s8 with `MBP` in `use_cases` and its two endpoints. The manifest pins the packs used
+   (`capability_packs`, included in `data_spec_hash`).
+
+Packs are global (all tenants). They are kept in the profile's pack store: memory, `out/packs/` (`memory-local`), or
+Cloud Storage (`gcp`). `GET /factory/capabilities/packs` lists the active ones; `DELETE` removes a published pack.
+Without `FACTORY_CAPABILITY_LAYER`, payload gaps are rejected as before (`UNKNOWN_ENTITIES`, ...), while published
+packs still work.
+
 ## What is built
 
 - **Data engine:** all 42 catalog entities, 40 scenario recipes (PCS/PAS/PEV/MBN/MCI/MPS/MPC/MAS/PAP/PPI), appeals
@@ -199,7 +223,9 @@ Resource names come from the s2 output (`config/s2_output_gcp.example.json` list
 
 ## Known gaps
 
-- MPA, MBP, MRX and PON (not in S1–S4) have no endpoints yet.
+- MPA, MRX and PON have no endpoints yet; MBP exists as a capability pack (`examples/capability-packs/mbp/`).
+- Capability packs (phase 1): member-anchored entities and member-facing read endpoints only; packs are written by
+  hand until the phase 2 agents.
 - The GCP adapters (AlloyDB, BigQuery, Cloud Storage, Vector Search, Pub/Sub), the Cloud Run Job executor and the
   deployer have not been run against a live project. The control plane keeps run state in memory, so a restart loses it.
 - API Gateway passes the Authorization header to the backend (`disable_auth`); the Cloud Run service must

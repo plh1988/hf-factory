@@ -6,7 +6,8 @@ import json
 import re
 
 from factory import GENERATOR_VERSION
-from factory.contracts import Manifest
+from factory.contracts import Manifest, canonical_hash
+from factory.data_engine import packs
 from factory.data_engine import rules as R
 from factory.data_engine.context import GenContext
 from factory.data_engine.rng import fmt_checksum
@@ -31,9 +32,17 @@ def luhn_ok(npi: str) -> bool:
 RULE_BASE = re.compile(r"^[A-Z]-\d+")
 
 
+def _base(rule_id: str) -> str:
+    """R-04b -> R-04; capability-pack rule ids (F-PREMIUM-01) are their own base."""
+    m = RULE_BASE.match(rule_id)
+    return m.group(0) if m else rule_id
+
+
 def all_rules(ctx: GenContext, present: set[str]) -> list[R.Rule]:
-    """Every rule that applies to this run: foreign keys, domain rules, and a P-01 stamp check per generated entity."""
-    return R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)]
+    """Every rule that applies to this run: foreign keys, domain rules, rules of active capability packs, and a P-01
+    stamp check per generated entity."""
+    return (R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + R.pack_rules()
+            + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)])
 
 
 def _evaluate(ctx: GenContext, rule: R.Rule, present: set[str]) -> dict:
@@ -54,7 +63,7 @@ def check_rules(ctx: GenContext, requested: list[str]) -> tuple[dict[str, str], 
     rules = [r for r in all_rules(ctx, present) if not r.id.startswith("R-01:") and not r.id.startswith("P-01:")]
     summary, details = {}, []
     for rid in requested:
-        subs = [_evaluate(ctx, r, present) for r in rules if RULE_BASE.match(r.id).group(0) == rid]
+        subs = [_evaluate(ctx, r, present) for r in rules if _base(r.id) == rid]
         details += subs
         ran = [s for s in subs if s["status"] != "SKIPPED"]
         if not subs:
@@ -136,10 +145,14 @@ def run(ctx: GenContext, rule_sets: list[str] | None = None, privacy_options: di
     report = run_rules(ctx, rule_sets)
     privacy = privacy_scan(ctx, privacy_options)
     r = ctx.spec
+    pack_pins = packs.pins(entities=set(ctx.counts))
     manifest = Manifest(
         tenant_id=r.tenant_id,
         dataset_id=r.dataset_id,
-        data_spec_hash=r.data_spec_hash(),
+        # payload hashes plus the capability packs the data came from: a replay must use exactly these packs
+        data_spec_hash=canonical_hash({"payloads": r.data_spec_hash(), "capability_packs": pack_pins}) if pack_pins
+        else r.data_spec_hash(),
+        capability_packs=pack_pins,
         payload_hashes=dict(sorted(r.payload_hashes.items())),
         root_seed=r.root_seed,
         as_of_date=r.as_of_date,

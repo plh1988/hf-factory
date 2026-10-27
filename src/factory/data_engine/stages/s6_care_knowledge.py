@@ -14,7 +14,7 @@ import pyarrow as pa
 from factory.data_engine import catalog
 from factory.data_engine.context import GenContext, dates, stamps
 from factory.data_engine.keys import claim_key_from_number
-from factory.data_engine.knowledge_catalog import USE_CASE_ORDER, AssetSpec, asset_specs
+from factory.data_engine.knowledge_catalog import AssetSpec, asset_specs
 
 DAY = np.timedelta64(1, "D")
 PROMPT_VERSION = "kb-doc-v1"
@@ -215,7 +215,7 @@ def write_faq_sop_links_golden(ctx: GenContext, specs: list[AssetSpec], a_ids: l
     for uc in ctx.spec.use_cases:
         if uc not in catalog.USE_CASES:
             continue
-        info, n = catalog.USE_CASES[uc], USE_CASE_ORDER.index(uc)
+        info, n = catalog.USE_CASES[uc], catalog.USE_CASE_SLOTS[uc]
         faq_spec, faq_aid = by_key[5000 + n]
         _, sop_aid = by_key[6000 + n]
         for qi, (variants, can) in enumerate(zip(info["faqs"], info["can"])):

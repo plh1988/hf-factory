@@ -185,6 +185,54 @@ USE_CASES.update({
 # Scope a caregiver's authorization_scope must cover for a member-facing use case (rule R-06)
 CAREGIVER_SCOPE = {"MBN": "BENEFITS", "MCI": "CLAIMS", "MPC": "PCP_CHANGE", "MAS": "APPOINTMENTS", "MBP": "BILLING", "MPA": "PA_STATUS"}
 
+# Built-in use cases, frozen before any capability pack registers: their position is their knowledge-asset slot
+# (0-9), which feeds asset ids, so it must never change. Pack use cases get slots 10-98 (USE_CASE_SLOTS).
+CORE_USE_CASES: tuple[str, ...] = tuple(sorted(USE_CASES))
+USE_CASE_SLOTS: dict[str, int] = {uc: i for i, uc in enumerate(CORE_USE_CASES)}
+CORE_ENTITIES: frozenset[str] = frozenset(PRIMARY_KEY)
+
+
+# ---------------------------------------------------------------- capability packs (factory.capability registry)
+# Packs extend the catalog at activation, in one place, and can be removed again (core entries cannot).
+def register_entity(name: str, stage: str, primary_key: str, domain: str = "PACK") -> None:
+    if name in CORE_ENTITIES:
+        return  # core packs (e.g. sdoh_indicator) are already in the catalog
+    ENTITIES.setdefault(domain, [])
+    if name not in ENTITIES[domain]:
+        ENTITIES[domain].append(name)
+    PRIMARY_KEY[name] = primary_key
+    IMPLEMENTED.add(name)
+    if name not in STAGE_ENTITIES[stage]:
+        STAGE_ENTITIES[stage].append(name)
+
+
+def unregister_entity(name: str) -> None:
+    if name in CORE_ENTITIES:
+        return
+    for ents in list(ENTITIES.values()) + list(STAGE_ENTITIES.values()):
+        if name in ents:
+            ents.remove(name)
+    PRIMARY_KEY.pop(name, None)
+    IMPLEMENTED.discard(name)
+
+
+def register_use_case(code: str, info: dict, caregiver_scope: str, slot: int) -> None:
+    if code in CORE_USE_CASES:
+        raise ValueError(f"{code} is a built-in use case")
+    taken = {uc: s for uc, s in USE_CASE_SLOTS.items() if s == slot and uc != code}
+    if taken:
+        raise ValueError(f"knowledge slot {slot} of {code} is taken by {sorted(taken)}; set knowledge_slot in the pack")
+    USE_CASES[code] = info
+    CAREGIVER_SCOPE[code] = caregiver_scope
+    USE_CASE_SLOTS[code] = slot
+
+
+def unregister_use_case(code: str) -> None:
+    if code in CORE_USE_CASES:
+        return
+    USE_CASES.pop(code, None)
+    USE_CASE_SLOTS.pop(code, None)
+
 # Scenario recipes live in scenarios.py; re-exported here for code that reads the catalog.
 from factory.data_engine.scenarios import FORCED_CLAIM_SCENARIOS, HAPPY_CLAIM_SCENARIOS, SCENARIOS  # noqa: E402,F401
 

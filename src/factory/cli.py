@@ -60,7 +60,9 @@ def cmd_serve(args) -> int:
     print(f"control plane: http://{host}:{port}/factory/docs")
     print("  POST /factory/data-engine/s3 .. s7, then POST /factory/api-engine/s8")
     print(f"  tenant API (after s8): http://{host}:{port}/docs")
-    uvicorn.run(create_control_app(Registry(profile, s2)), host=host, port=port, log_level="info")
+    layer = Settings().capability_layer
+    print(f"  capability layer: {'on (gaps start builds, 202)' if layer else 'off'}; packs: {profile.packs.kind}")
+    uvicorn.run(create_control_app(Registry(profile, s2), capability_layer=layer), host=host, port=port, log_level="info")
     return 0
 
 

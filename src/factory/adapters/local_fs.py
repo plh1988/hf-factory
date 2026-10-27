@@ -13,9 +13,11 @@ sorted keys relative to the tenant folder. Files survive a server restart; delet
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from factory.config import REPO_ROOT, AdapterConfig
 
@@ -93,3 +95,30 @@ class FileTextCache:
         self.base.mkdir(parents=True, exist_ok=True)
         n = sum(1 for _ in self.base.glob("*.txt"))
         return f"ok (folder {self.base}, {n} cached texts)"
+
+
+def _pack_file(doc: dict) -> str:
+    return f"{doc['id']}@{doc['version']}.json"
+
+
+class LocalPackStore:
+    """<root>/<id>@<version>.json (root relative to the repository unless absolute)."""
+
+    def __init__(self, cfg: AdapterConfig) -> None:
+        root = Path(cfg.get("root", "out/packs"))
+        self.root = root if root.is_absolute() else REPO_ROOT / root
+
+    def put(self, doc: dict[str, Any]) -> str:
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self.root / _pack_file(doc)
+        path.write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+        return path.as_uri()
+
+    def all(self) -> list[dict[str, Any]]:
+        if not self.root.exists():
+            return []
+        return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(self.root.glob("*@*.json"))]
+
+    def delete(self, pack_id: str) -> None:
+        for p in self.root.glob(f"{pack_id}@*.json"):
+            p.unlink()

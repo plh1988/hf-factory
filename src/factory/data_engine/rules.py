@@ -314,6 +314,24 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
     ]
 
 
+def pack_rules() -> list[Rule]:
+    """Rules of the active entity packs: a foreign-key rule per column with `references`, then the pack's own rules.
+    Imported late: packs import the catalog, and the rule catalog must not depend on pack loading order."""
+    from factory.data_engine import packs
+    from factory.data_engine.packs.model import sql_tables
+
+    out = []
+    for p in packs.for_anchor("member"):
+        for c in p.entity.columns:
+            if c.references is not None:
+                child, parent, pk = p.entity.name, c.references.entity, c.references.column
+                out.append(Rule(f"R-01:{child}.{c.name}", f"{child}.{c.name} references {parent}.{pk}",
+                                f"SELECT count(*) FROM {child} c WHERE c.{c.name} IS NOT NULL "
+                                f"AND NOT EXISTS (SELECT 1 FROM {parent} p WHERE p.{pk} = c.{c.name})", [child, parent]))
+        out += [Rule(r.id, r.description, " ".join(r.sql.split()), r.needs or sorted(sql_tables(r.sql))) for r in p.rules]
+    return out
+
+
 def p01_rule(entity: str, tenant: str) -> Rule:
     return Rule(f"P-01:{entity}", f"{entity}: every row is synthetic, tenant-stamped and scenario-tagged",
                 f"SELECT count(*) FROM {entity} WHERE is_synthetic IS NOT TRUE OR tenant_id <> '{tenant}' OR scenario_id IS NULL",

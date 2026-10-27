@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from factory.data_engine import catalog
 
-USE_CASE_ORDER = sorted(catalog.USE_CASES)
+USE_CASE_ORDER = catalog.CORE_USE_CASES  # built-in use cases; slots of all use cases: catalog.USE_CASE_SLOTS
 DENIAL_ORDER = list(catalog.DENIAL_CATEGORIES)
 
 
@@ -87,7 +87,7 @@ def asset_specs(ctx, plans: list[dict]) -> list[AssetSpec]:
         if uc not in catalog.USE_CASES:
             continue
         info = catalog.USE_CASES[uc]
-        n = USE_CASE_ORDER.index(uc)
+        n = catalog.USE_CASE_SLOTS[uc]  # fixed per use case, so asset ids never shift
         specs.append(AssetSpec(5000 + n, "FAQ_LIBRARY", f"FAQ: {info['name']}", "PROVIDER" if info["group"] == "provider" else "MEMBER",
                                [f"{q[0]} {a}" for q, a in zip(info["faqs"], info["can"])], use_case=uc, links=[("USE_CASE", uc)]))
         specs.append(AssetSpec(6000 + n, "AGENT_SOP", f"Agent SOP: {info['name']}", "INTERNAL", [

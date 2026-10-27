@@ -178,3 +178,25 @@ class TablesAnalyticsStore:
 
     def health(self) -> str:
         return "ok (analytics on the in-memory tables)"
+
+
+def _pack_file(doc: dict) -> str:
+    return f"{doc['id']}@{doc['version']}.json"
+
+
+class MemoryPackStore:
+    """Published capability packs in a dict (process lifetime)."""
+
+    def __init__(self, cfg=None) -> None:
+        self._docs: dict[str, dict[str, Any]] = {}
+
+    def put(self, doc: dict[str, Any]) -> str:
+        self._docs[_pack_file(doc)] = doc
+        return f"memory://packs/{_pack_file(doc)}"
+
+    def all(self) -> list[dict[str, Any]]:
+        return [self._docs[k] for k in sorted(self._docs)]
+
+    def delete(self, pack_id: str) -> None:
+        for k in [k for k in self._docs if k.startswith(pack_id + "@")]:
+            del self._docs[k]

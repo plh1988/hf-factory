@@ -1,0 +1,94 @@
+# Entity pack: monthly premium invoices (member billing). Written by hand for phase 1; phase 2 agents produce
+# packs like this from the name "premium_invoice" alone, using the capability skill.
+id: entity.premium_invoice
+version: 1.0.0
+kind: entity
+description: >-
+  Monthly premium invoices for the last six months, for members whose plan charges a premium (Medicaid members,
+  whose enrollment premium status is NA, get none). Each member has one premium amount for all months (Medicare
+  Advantage $15-95, Commercial $380-720). The current month's status follows the enrollment's premium status
+  (PAID, DUE or PAST_DUE); earlier months are almost always paid.
+entity:
+  name: premium_invoice
+  anchor: member
+  primary_key: invoice_id
+  rows:
+    per_anchor: many
+    when: {op: not, of: {op: eq, of: {op: anchor, field: premium_status}, value: NA}}
+    count: {op: const, value: 6}
+    slots: 12
+  columns:
+    - name: invoice_id
+      type: string
+      gen: {op: row_id}
+    - name: invoice_number
+      type: string
+      gen: {op: format, template: "INV-{member_number}-{index:02d}"}
+    - name: member_id
+      type: string
+      gen: {op: anchor, field: member_id}
+      references: {entity: member_demographics, column: member_id}
+    - name: plan_id
+      type: string
+      gen: {op: anchor, field: plan_id}
+      references: {entity: plan, column: plan_id}
+    - name: billing_month
+      type: date
+      description: first day of the billed month; index 0 is the as-of month
+      gen: {op: months_before_as_of, months: {op: row_index}}
+    - name: due_dt
+      type: date
+      gen: {op: add_days, of: {op: column, name: billing_month}, days: 14}
+    - name: amount_due
+      type: money
+      gen:
+        op: money
+        draw: premium
+        per: anchor
+        low: {op: map, of: {op: anchor, field: lob}, values: {MEDICARE_ADV: 15, COMMERCIAL: 380}, default: 0}
+        high: {op: map, of: {op: anchor, field: lob}, values: {MEDICARE_ADV: 95, COMMERCIAL: 720}, default: 0}
+    - name: status
+      type: string
+      gen:
+        op: if
+        cond: {op: eq, of: {op: row_index}, value: 0}
+        then: {op: anchor, field: premium_status}
+        else: {op: choice, draw: past_status, options: [PAID, PAST_DUE], weights: [97, 3]}
+    - name: amount_paid
+      type: money
+      gen:
+        op: if
+        cond: {op: eq, of: {op: column, name: status}, value: PAID}
+        then: {op: column, name: amount_due}
+        else: {op: const, value: 0}
+    - name: paid_dt
+      type: date
+      description: autopay on the 1st for the current month; earlier months within 20 days of billing
+      gen:
+        op: if
+        cond: {op: eq, of: {op: column, name: status}, value: PAID}
+        then:
+          op: if
+          cond: {op: eq, of: {op: row_index}, value: 0}
+          then: {op: column, name: billing_month}
+          else: {op: add_days, of: {op: column, name: billing_month}, days: {op: integer, draw: pay_lag, low: 0, high: 21}}
+        else: {op: const, value: null}
+    - name: autopay
+      type: bool
+      gen: {op: bernoulli, draw: autopay, per: anchor, p: 0.55}
+rules:
+  - id: F-PREMIUM-01
+    description: Paid invoices are paid in full with a payment date; unpaid ones have no payment
+    sql: >-
+      SELECT count(*) FROM premium_invoice
+      WHERE (status = 'PAID' AND (amount_paid <> amount_due OR paid_dt IS NULL))
+         OR (status <> 'PAID' AND (amount_paid <> 0 OR paid_dt IS NOT NULL))
+  - id: T-PREMIUM-01
+    description: Payments are not before the billing month; invoices are due after it starts
+    sql: SELECT count(*) FROM premium_invoice WHERE paid_dt < billing_month OR due_dt <= billing_month
+  - id: R-PREMIUM-01
+    description: Medicaid members are not billed a premium
+    sql: >-
+      SELECT count(*) FROM premium_invoice i JOIN member_demographics m ON m.member_id = i.member_id
+      WHERE m.lob = 'MEDICAID_MCO'
+    needs: [premium_invoice, member_demographics]

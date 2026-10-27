@@ -7,6 +7,7 @@ BlobStore. Handlers call named methods and contain no SQL. Coded values are boun
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from typing import Any
 
@@ -14,6 +15,8 @@ import pyarrow as pa
 
 from factory import codes
 from factory.adapters.ports import Stores
+
+_IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 class Repository:
@@ -231,6 +234,51 @@ class Repository:
 
     def save_appointment(self, record: dict[str, Any]) -> None:
         self.blobs.put(f"appointments/{record['appointment_id']}.json", json.dumps(record).encode(), "application/json")
+
+    # ---------------------------------------------------------------- capability-pack endpoints (generic reads)
+    @staticmethod
+    def _ident(name: str) -> str:
+        """A validated, quoted SQL identifier (pack column and table names are checked at publication too)."""
+        if not _IDENT.match(name):
+            raise ValueError(f"unsafe identifier {name!r}")
+        return f'"{name}"'
+
+    def _member_where(self, member_column: str, member_id: str, filters: dict[str, str],
+                      item: tuple[str, str] | None) -> tuple[str, list[Any]]:
+        q = self._ident
+        sql, params = f"{q(member_column)} = ?", [member_id]
+        for col, value in filters.items():  # case-insensitive match on the text value
+            sql, params = sql + f" AND upper(CAST({q(col)} AS VARCHAR)) = upper(?)", params + [value]
+        if item is not None:
+            sql, params = sql + f" AND CAST({q(item[0])} AS VARCHAR) = ?", params + [item[1]]
+        return sql, params
+
+    def member_rows(self, entity: str, member_column: str, member_id: str, columns: list[str], filters: dict[str, str],
+                    item: tuple[str, str] | None, order: list[tuple[str, bool]], limit: int | None) -> list[dict]:
+        """Rows of a pack endpoint's table for one member (optionally one item), ordered, limited."""
+        q = self._ident
+        where, params = self._member_where(member_column, member_id, filters, item)
+        order_sql = ", ".join(f"{q(c)}{' DESC' if desc else ''}" for c, desc in order)
+        sql = f"SELECT {', '.join(q(c) for c in columns)} FROM {q(entity)} WHERE {where}"
+        if order_sql:
+            sql += f" ORDER BY {order_sql}"
+        if limit is not None:
+            sql, params = sql + " LIMIT ?", params + [limit]
+        return self._rows(sql, params)
+
+    def member_aggregates(self, entity: str, member_column: str, member_id: str, filters: dict[str, str],
+                          aggregates: list[tuple[str, str, str | None, dict[str, list[str]]]]) -> dict[str, Any]:
+        """Summary values over all of the member's matching rows: (name, fn, column, where) each."""
+        q = self._ident
+        where, params = self._member_where(member_column, member_id, filters, None)
+        parts, agg_params = [], []
+        for name, fn, column, cond in aggregates:
+            test = " AND ".join(f"{q(c)} IN ({', '.join('?' * len(vs))})" for c, vs in cond.items()) or "TRUE"
+            agg_params += [v for vs in cond.values() for v in vs]
+            value = "1" if fn == "count" else q(column)
+            parts.append(f"{fn}(CASE WHEN {test} THEN {value} END) AS {q(name)}")
+        row = self._one(f"SELECT {', '.join(parts)} FROM {q(entity)} WHERE {where}", agg_params + params)
+        return dict(row or {})
 
     # ---------------------------------------------------------------- writes and lookups for S2-S4 use cases
     def exists(self, entity: str) -> bool:

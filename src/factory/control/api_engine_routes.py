@@ -6,11 +6,12 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 
 from factory.api_engine.stage import run_api_engine
 from factory.contracts import ApiJob
+from factory.control.capability_routes import build_started
 from factory.control.deps import TenantApiMount, get_registry, get_tenant_api
 from factory.control.registry import Registry
 from factory.control.validation import validate_api_job
@@ -19,9 +20,13 @@ router = APIRouter(tags=["API engine"])
 
 
 @router.post("/factory/api-engine/s8", summary="s8: api_generate_and_deploy", operation_id="run_s8")
-def run_s8(job: ApiJob, tenant: str | None = Query(None, description="Override tenant resolution"),
+def run_s8(job: ApiJob, request: Request, tenant: str | None = Query(None, description="Override tenant resolution"),
            registry: Registry = Depends(get_registry), tenant_api: TenantApiMount = Depends(get_tenant_api)) -> Any:
     with registry.lock:
+        if request.app.state.capability_layer:  # gaps start a capability build instead of a rejection
+            started = build_started(request.app.state.builds, "s8", job.model_dump(mode="json", exclude_none=True))
+            if started is not None:
+                return started
         tid = registry.resolve_tenant(job.tenant_hint(), tenant, "s8")
         run = registry.run_for(tid, "s8")
         notes = validate_api_job(job, run)
