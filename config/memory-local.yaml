@@ -1,18 +1,21 @@
-# Everything in memory, with a local LLM behind an OpenAI-compatible API (LM Studio, Ollama, vLLM).
+# Tables, vectors and events in memory; documents and LLM text as files under out/ (git-ignored);
+# a local LLM behind an OpenAI-compatible API (LM Studio, Ollama, vLLM).
+#   out/<tenant>/docs/<asset_type>/<asset_id>.md   generated knowledge documents (plus manifest, reports, jobs)
+#   out/cache/text/<sha256>.txt                    LLM text cache: a rerun with the same seed skips generation
 # No cloud access needed. LM Studio: Developer tab -> Start Server (port 1235 on this setup), load a chat model and,
 # optionally, an embedding model. Model ids: GET http://localhost:1235/v1/models, or run `factory doctor`.
 tables:     {kind: duckdb}
-blobs:      {kind: memory}
+blobs:      {kind: local, root: out}
 vectors:    {kind: numpy}
 events:     {kind: log}
-text_cache: {kind: memory}
+text_cache: {kind: local, root: out/cache/text}
 deployer:   {kind: local, host: 127.0.0.1, port: 8080}
 llm:
   kind: openai_compatible
   base_url: http://localhost:1235/v1   # LM Studio here runs on 1235 (its default is 1234); Ollama: http://localhost:11434/v1
   api_key: lm-studio                   # ignored by LM Studio; set it if your server needs one
   model: qwen3.8-27b-turbo-brilliance-50x-reasoning-instruct-neo-max-mtp   # the chat model id exactly as the server lists it
-  embedding_model:                     # empty: offline hashed embeddings; set an embedding model id to use one
+  embedding_model: text-embedding-nomic-embed-text-v1.5   # empty: offline hashed embeddings
   max_output_tokens: 8192              # reasoning models spend tokens on <think> before the answer
   timeout_s: 3600                      # per request (1 hour): local models are slow; connection errors still fail fast
 # Keeps in-memory runs to a manageable size (about 1-1.5M rows). Larger payloads get HTTP 413.

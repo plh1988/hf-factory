@@ -14,7 +14,7 @@ from factory.config import AdapterConfig, Profile
 
 def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any]]]:
     """port -> kind -> constructor. GCP classes are imported lazily so memory profiles need no Google libraries."""
-    from factory.adapters import llm, memory
+    from factory.adapters import llm, local_fs, memory
     from factory.adapters.deploy import CloudRunDeployer, LocalDeployer
     from factory.adapters.jobs import CloudRunJobExecutor, LocalExecutor
 
@@ -27,10 +27,11 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
 
     return {
         "tables": {"duckdb": lambda c, ns: memory.DuckDBTableStore(), "alloydb": gcp("AlloyDBTableStore")},
-        "blobs": {"memory": lambda c, ns: memory.MemoryBlobStore(), "gcs": gcp("GCSBlobStore")},
+        "blobs": {"memory": lambda c, ns: memory.MemoryBlobStore(), "local": local_fs.FileBlobStore, "gcs": gcp("GCSBlobStore")},
         "vectors": {"numpy": lambda c, ns: memory.NumpyVectorIndex(), "vertex_vector_search": gcp("VertexVectorIndex")},
         "events": {"log": lambda c, ns: memory.LogEventBus(), "pubsub": gcp("PubSubEventBus")},
-        "text_cache": {"memory": lambda c, ns: memory.MemoryTextCache(), "gcs": gcp("GCSTextCache")},
+        "text_cache": {"memory": lambda c, ns: memory.MemoryTextCache(), "local": local_fs.FileTextCache,
+                       "gcs": gcp("GCSTextCache")},
         "llm": {"offline": lambda c, ns: llm.OfflineLLM(c), "vertex": lambda c, ns: llm.VertexLLM(c),
                 "openai_compatible": lambda c, ns: llm.OpenAICompatibleLLM(c)},
         "deployer": {"local": lambda c, ns: LocalDeployer(c), "cloud_run": CloudRunDeployer},

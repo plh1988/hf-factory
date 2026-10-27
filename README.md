@@ -106,7 +106,7 @@ Gaps in the spec payloads and how they are filled (each reported in the response
 |---|---|---|---|---|---|---|---|---|
 | `memory-offline` | DuckDB in memory | same tables | dict | NumPy | log | offline stand-in | in-process | same server |
 | `memory` | DuckDB in memory | same tables | dict | NumPy | log | **Vertex AI** | in-process | same server |
-| `memory-local` | DuckDB in memory | same tables | dict | NumPy | log | **local model** (LM Studio, Ollama) | in-process | same server |
+| `memory-local` | DuckDB in memory | same tables | **files in `out/`** | NumPy | log | **local model** (LM Studio, Ollama) | in-process | same server |
 | `gcp` | AlloyDB | BigQuery | Cloud Storage | Vertex AI Vector Search | Pub/Sub | Vertex AI | Cloud Run Job | Cloud Run + API Gateway |
 
 Only `factory/adapters/__init__.py` maps a profile to backends; `tests/test_portability.py` fails if engine code
@@ -135,8 +135,20 @@ retries on connection errors and 408/429/5xx; `<think>` blocks of reasoning mode
    (`GET http://localhost:1235/v1/models`).
 3. `FACTORY_PROFILE=memory-local`, then `python -m factory doctor` (it warns if a configured model is not loaded).
 
-Local models are slower than Gemini: s6 makes one call per knowledge document and FAQ answer (about 140 for S1),
-cached by content, so a second run with the same seed reuses the text.
+Local models are slower than Gemini: s6 makes one call per knowledge document and FAQ answer (about 140 for S1;
+36 for a small S1 with 4 plans, about 6 minutes on a 27B model).
+
+This profile writes documents and LLM text to files (`adapters/local_fs.py`), so you can open them and they survive
+a restart:
+
+| Path | Content |
+|---|---|
+| `out/<tenant>/docs/<asset_type>/<asset_id>.md` | generated knowledge documents |
+| `out/<tenant>/manifest/<seed>.json`, `reports/rule-report.json`, `jobs/<stage>.json` | run manifest, rule report, stage payloads |
+| `out/cache/text/<sha256>.txt` | LLM text cache shared by all tenants: a rerun with the same seed, prompts and model skips generation |
+
+`out/` is git-ignored. It also holds `secrets/api-client.json`, the local test client secret. Deleting a run does
+not delete its files.
 
 ### Docker
 
