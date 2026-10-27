@@ -6,6 +6,7 @@
 Writes, under skills/healthcare-capability-builder/:
   references/pack-schema.json   JSON Schema of the pack format (entity and use_case packs)
   references/generators.md      the building blocks: op, purpose, parameters
+  references/domain/*.md        core entities (columns from a tiny offline run), use cases, codes, rules
   examples/<pack>.yaml          the core packs and examples/capability-packs/*, as worked examples
 """
 
@@ -19,6 +20,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from factory.data_engine import catalog  # noqa: E402
 from factory.data_engine.packs import CORE_DIR  # noqa: E402
 from factory.data_engine.packs.model import ANCHOR_FIELDS, ANCHOR_STAGE, Expr, pack_json_schema  # noqa: E402
 
@@ -63,10 +65,117 @@ def generators_md() -> str:
     return "\n".join(lines)
 
 
+DUCK_TYPES = {"VARCHAR": "string", "BOOLEAN": "bool", "BIGINT": "int", "INTEGER": "int", "DOUBLE": "float", "DATE": "date",
+              "TIMESTAMP": "timestamp", "VARCHAR[]": "list<string>"}
+
+
+def core_schemas() -> dict[str, list[tuple[str, str]]]:
+    """Columns and types of every core table, read from a tiny offline sandbox run (so they match the generators)."""
+    import warnings
+
+    warnings.filterwarnings("ignore")
+    from fastapi.testclient import TestClient
+
+    from factory.capability import sandbox
+    from factory.config import load_profile
+    from factory.control.registry import Registry
+    from factory.control.server import create_control_app
+
+    reg = Registry(load_profile("memory-offline"))
+    client = TestClient(create_control_app(reg, load_packs=False))
+    for stage, payload in sandbox.payloads("skill-refs", members=60).items():
+        if stage != "s8":
+            assert client.post(f"/factory/data-engine/{stage}", json=payload).status_code == 200, stage
+    tables = reg.runs["skill-refs"].stores.tables
+    rows = tables.query("SELECT table_name, column_name, data_type FROM information_schema.columns "
+                        "ORDER BY table_name, ordinal_position").to_pylist()
+    out: dict[str, list[tuple[str, str]]] = {}
+    for r in rows:
+        if r["table_name"] in catalog.CORE_ENTITIES and r["column_name"] not in ("is_synthetic", "tenant_id", "scenario_id"):
+            t = r["data_type"]
+            out.setdefault(r["table_name"], []).append((r["column_name"], "money" if t.startswith("DECIMAL") else DUCK_TYPES.get(t, t.lower())))
+    return out
+
+
+def entities_md() -> str:
+    schemas = core_schemas()
+    stage_of = {e: st for st, es in catalog.STAGE_ENTITIES.items() for e in es}
+    lines = [HEADER.replace("factory/data_engine/packs/model.py", "the core generators (factory/data_engine/stages)"), "# Core entities", "",
+             "Built-in tables. `stage` generates them; `key` is the primary key. Every table also has `is_synthetic`,",
+             "`tenant_id` and `scenario_id`. Packs may read these tables in endpoints and rules, reference their keys,",
+             "and read member fields through `{op: anchor}`; they never redefine them. Types: string, bool, int, float, date,",
+             "timestamp, money (DECIMAL(14,2)), list<string>.", ""]
+    for domain, ents in catalog.ENTITIES.items():
+        if domain == "PACK":
+            continue
+        lines.append(f"## {DOMAINS.get(domain, domain)}")
+        lines.append("")
+        for e in ents:
+            if e not in schemas:
+                continue
+            cols = ", ".join(f"{c} {t}" for c, t in schemas[e])
+            lines.append(f"- **{e}** (stage {stage_of.get(e, '?')}, key `{catalog.PRIMARY_KEY[e]}`): {cols}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+DOMAINS = {"M": "Members and plans", "P": "Providers and network", "C": "Claims", "A": "Authorizations", "CM": "Care management",
+           "K": "Knowledge"}
+
+
+def use_cases_md() -> str:
+    from factory.api_engine.endpoints import ENDPOINT_CATALOG
+
+    lines = [HEADER.replace("factory/data_engine/packs/model.py", "factory/data_engine/catalog.py and factory/api_engine/endpoints.py"), "# Use cases", "",
+             "Built-in use cases (code, audience, what the agent can do, endpoints under the base path). A new use case",
+             "follows the same structure in a use_case pack.", ""]
+    for code in catalog.CORE_USE_CASES:
+        uc = catalog.USE_CASES[code]
+        eps = ", ".join(f"`{m} {p}`" for m, p in ENDPOINT_CATALOG.get(code, []))
+        scope = catalog.CAREGIVER_SCOPE.get(code)
+        lines += [f"## {code} {uc['name']} ({uc['group']})", "",
+                  f"- can: {'; '.join(uc['can'])}", f"- escalate: {'; '.join(uc['escalate'])}", f"- never: {'; '.join(uc['never'])}",
+                  f"- verification: {', '.join(uc['verification'])}; handoff queue: {uc['handoff_queue']}"
+                  + (f"; caregiver scope: {scope}" if scope else ""), f"- endpoints: {eps}", ""]
+    lines += ["Caregiver scopes in use: " + ", ".join(f"{k}={v}" for k, v in sorted(catalog.CAREGIVER_SCOPE.items())), ""]
+    return "\n".join(lines)
+
+
+def codes_md() -> str:
+    from factory import codes
+    from factory.api_engine.errors import ErrorCode
+
+    lines = [HEADER.replace("factory/data_engine/packs/model.py", "factory/codes.py and factory/api_engine/errors.py"), "# Codes", "",
+             "Coded values the core data uses (UPPER_SNAKE_CASE). Packs use the same values where they mean the same thing.", ""]
+    for name, cls in vars(codes).items():
+        if isinstance(cls, type) and issubclass(cls, codes.StrEnum) and cls is not codes.StrEnum:
+            lines.append(f"- **{name}**: {', '.join(m.value for m in cls)}")
+    lines += ["", "## API error codes", "", "Generic pack endpoints use MEMBER_NOT_FOUND, SCOPE_NOT_AUTHORIZED, CAREGIVER_NOT_VERIFIED,",
+              "CONSENT_EXPIRED, RESOURCE_NOT_FOUND and INVALID_PARAMETER automatically.", ""]
+    lines += [f"- {c.value} ({c.status})" for c in ErrorCode]
+    return "\n".join(lines) + "\n"
+
+
+def rules_md() -> str:
+    from factory.data_engine import rules as R
+
+    lines = [HEADER.replace("factory/data_engine/packs/model.py", "factory/data_engine/rules.py"), "# Core rules", "",
+             "Families: R relational/referential, T temporal, F financial, C compliance, P privacy, A agent/knowledge.",
+             "Each rule is SQL returning the count of violating rows. Pack rule ids must not reuse these.", ""]
+    lines += [f"- **{r.id}**: {r.description}" for r in R.domain_rules("2026-01-01", "tenant")]
+    lines += ["", "Foreign keys (R-01): " + "; ".join(f"{c}.{col} -> {p}.{k}" for c, col, p, k in R.FOREIGN_KEYS), ""]
+    return "\n".join(lines)
+
+
 def outputs() -> dict[Path, str]:
+    refs = SKILL / "references"
     files = {
-        SKILL / "references" / "pack-schema.json": json.dumps(pack_json_schema(), indent=2) + "\n",
-        SKILL / "references" / "generators.md": generators_md(),
+        refs / "pack-schema.json": json.dumps(pack_json_schema(), indent=2) + "\n",
+        refs / "generators.md": generators_md(),
+        refs / "domain" / "entities.md": entities_md(),
+        refs / "domain" / "use-cases.md": use_cases_md(),
+        refs / "domain" / "codes.md": codes_md(),
+        refs / "domain" / "rules.md": rules_md(),
     }
     for p in sorted(CORE_DIR.glob("*.yaml")):
         files[SKILL / "examples" / p.name] = p.read_text(encoding="utf-8")

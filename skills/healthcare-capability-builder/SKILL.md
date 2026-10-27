@@ -1,7 +1,7 @@
 ---
 name: healthcare-capability-builder
 description: Design capability packs for the healthcare synthetic-data factory from the names in stage payloads (entity names, use-case codes, endpoint paths, scenario ids). Use when a payload asks for something the engines do not support yet.
-version: 0.2.0 (phase 1)
+version: 0.3.3 (phase 2)
 ---
 
 # Healthcare capability builder
@@ -17,6 +17,14 @@ Python. The plan is in `docs/agentic-capability-layer.md`.
   ordering, limits and summaries; single items), plus FAQ and agent-SOP content.
 - Not yet: other anchors (claims, providers), writes, provider-facing use cases, new scenario recipes. If a name
   needs these, say so in the description instead of approximating.
+
+## Roles (phase 2 agents)
+
+The factory runs this skill as three agents on the build's gaps: the **planner** reads the gaps and payload names
+(glossary, use cases, core entities) and answers with a JSON plan, or questions when a name cannot be read; the
+**entity author** writes one entity pack per planned entity; the **API author** writes one use-case pack per planned
+use case. Each pack is validated and gated; a rejection comes back with the reasons, and you return the complete
+corrected pack. Answer with exactly what the role asks for: one JSON object (planner) or one ```yaml block (authors).
 
 ## Workflow
 
@@ -36,13 +44,17 @@ Python. The plan is in `docs/agentic-capability-layer.md`.
 
 - **Deterministic.** All randomness comes from building blocks with a `draw` name, used once per pack unless two
   values must match on purpose. Use `per: anchor` for values constant per member (a premium amount, an autopay flag).
-- **No clock.** Dates come from `days_before_as_of`, `months_before_as_of` and `add_days`, never from today.
+- **Foreign keys** to reference tables are picked with `lookup` (values that exist), never invented.
+- **When blocked,** simplify or drop what the building blocks cannot express and note it in the description.
+- **No clock.** Dates come from `days_before_as_of`, `months_before_as_of` and `add_days`, never from today; rules
+  write `AS_OF_DATE`.
   Dates must not fall after the as-of date (for the current month use the first of the month or earlier).
 - **Own random stream.** Leave `random_stream` at `own`; `anchor` is for core packs only.
 - **Keys.** Primary key: a string column `{op: row_id}`. For `many` rows pick `slots` above any realistic count and
   never change it later (it is part of every row key).
 - **Rules** are `SELECT count(*) FROM <table> ...` returning the number of violating rows; rule ids start with the
-  family letter (R/T/F/C/P/A) and are unique, e.g. `F-PREMIUM-01`. No writes, no functions that read files.
+  family letter (R/T/F/C/P/A) and are unique, e.g. `F-PREMIUM-01`. No writes, no functions that read files or the
+  clock; a SQL parser checks this.
 - **Synthetic only.** No real people, NPIs, addresses or member data; packs hold specs, never rows.
 - **Engine columns.** Do not add `is_synthetic`, `tenant_id` or `scenario_id`.
 - **API.** Member endpoints check the member and caregiver scope automatically; set `caregiver_scope` to the scope a
@@ -100,6 +112,13 @@ nothing active; read its detail, fix the pack and publish again.
 | `examples/mbp/premium_invoice.yaml` | entity pack with many rows, per-member values, foreign keys, rules | `examples/capability-packs/mbp/` |
 | `examples/mbp/uc_mbp.yaml` | use-case pack: list and item endpoints, filter, summaries | `examples/capability-packs/mbp/` |
 
-Planned (phase 2): `data-conventions.md`, `api-conventions.md`, `domain/entities.md`, `domain/codes.md`,
-`domain/errors.md`, `domain/standards.md`, `domain/use-cases.md`, `domain/rules.md`, `domain/glossary.md`.
+| `references/data-conventions.md` | anchors, rows, keys, money, dates, rules for entity packs | hand-written |
+| `references/api-conventions.md` | paths, tables, fields, lists, items, content for use-case packs | hand-written |
+| `references/domain/glossary.md` | how to read use-case codes, entity names, paths, scenario ids | hand-written |
+| `references/domain/standards.md` | X12, NCPDP, FHIR, CARC, HEDIS vocabulary | hand-written |
+| `references/domain/entities.md` | core tables with columns, types, keys, stages | generated (offline sandbox run) |
+| `references/domain/use-cases.md` | built-in use cases and endpoints | generated |
+| `references/domain/codes.md` | coded values and API error codes | generated |
+| `references/domain/rules.md` | core rules and foreign keys | generated |
+
 Generated files are rebuilt with `python scripts/build_skill_refs.py`; a test fails when they are out of date.

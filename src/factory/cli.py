@@ -60,9 +60,14 @@ def cmd_serve(args) -> int:
     print(f"control plane: http://{host}:{port}/factory/docs")
     print("  POST /factory/data-engine/s3 .. s7, then POST /factory/api-engine/s8")
     print(f"  tenant API (after s8): http://{host}:{port}/docs")
-    layer = Settings().capability_layer
-    print(f"  capability layer: {'on (gaps start builds, 202)' if layer else 'off'}; packs: {profile.packs.kind}")
-    uvicorn.run(create_control_app(Registry(profile, s2), capability_layer=layer), host=host, port=port, log_level="info")
+    settings = Settings()
+    layer = settings.capability_layer
+    builder = settings.capability_builder
+    if builder == "auto":  # the offline stand-in LLM cannot write packs
+        builder = "manual" if profile.llm.kind == "offline" else "agents"
+    print(f"  capability layer: {'on (gaps start builds, 202)' if layer else 'off'}; builder: {builder}; packs: {profile.packs.kind}")
+    app = create_control_app(Registry(profile, s2), capability_layer=layer, builder=builder, skill_dir=settings.skill_dir)
+    uvicorn.run(app, host=host, port=port, log_level="info")
     return 0
 
 

@@ -11,6 +11,7 @@ llm:
   project: your-gcp-project-id        # set once
   location: us-central1
   model: gemini-2.5-flash             # pin to the model your project uses
+  max_output_tokens: 8192             # capability agents write packs of several thousand tokens
   embedding_model: text-embedding-005
   embedding_dim: 256
 # Keeps in-memory runs to a manageable size (about 1-1.5M rows). Larger payloads get HTTP 413.

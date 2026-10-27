@@ -40,6 +40,11 @@ def _registry() -> dict[str, dict[str, Callable[[AdapterConfig, str | None], Any
     }
 
 
+def build_llm(profile: Profile) -> Any:
+    """Only the profile's LLM client (the capability agents use it outside any run)."""
+    return _registry()["llm"][profile.llm.kind](profile.llm, None)
+
+
 def build_pack_store(cfg: AdapterConfig | None) -> Any:
     """The global store of published capability packs (not per tenant): memory | local | gcs."""
     from factory.adapters import local_fs, memory

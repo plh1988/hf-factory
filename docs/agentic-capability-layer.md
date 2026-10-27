@@ -1,6 +1,6 @@
 # Agentic capability layer: plan
 
-Status: **phases 0 and 1 done** (§12); phases 2–4 planned. Owner: factory team.
+Status: **phases 0, 1 and 2 done** (§12); phases 3–4 planned. Owner: factory team.
 
 ## 1. Problem
 
@@ -310,3 +310,39 @@ running `factory serve`. The regression snapshot of S1–S4 is identical to phas
 - Pack stores are adapters (only `adapters/` may import cloud libraries); `factory serve` reads
   `FACTORY_CAPABILITY_LAYER` (only `config.py` and `cli.py` read the environment).
 - Phase 1 builds wait for packs to be published by hand; phase 2 plugs the agent builder into `Builds.start()`.
+
+### Phase 2 — done
+
+| Delivered | Where |
+|---|---|
+| Agents: planner (gaps + payload names -> JSON plan, or questions), entity author, use-case author; repair loop (validation errors turned into instructions, gate failures fed back; 3 attempts per pack); every prompt and response kept per build | `capability/agents.py` |
+| Builds run the agents in the background (one at a time): `BUILDING` -> `READY` / `UNDERSPECIFIED` / `FAILED`; `GET .../builds/{id}/log`, `POST .../retry`; `FACTORY_CAPABILITY_BUILDER` (auto / agents / manual), `FACTORY_SKILL_DIR`; the skill ships in the Docker image | `capability/gaps.py`, `control/`, `cli.py`, `Dockerfile` |
+| Skill v0.3: generated `domain/entities.md` (core columns from an offline run), `use-cases.md`, `codes.md`, `rules.md`; hand-written glossary, data and API conventions, standards | `skills/healthcare-capability-builder/` |
+| Rule SQL parsed with sqlglot: one SELECT returning count(*), plain table names, no unknown functions, no file or clock access; `AS_OF_DATE` for the run's as-of date | `packs/model.py`, `rules.py` |
+| Pack language additions found by the live runs: `lookup` (values from rows of earlier-stage tables, ordered by primary key; same draw = same row), `digits`, numeric map keys, map values must be constants | `packs/model.py`, `engine.py` |
+| Deterministic agent tests with a scripted LLM (repairs, 202, UNDERSPECIFIED, FAILED + retry); live demo script | `tests/test_agents.py`, `scripts/agent_build_demo.py` |
+
+**Acceptance (live, local model).** LM Studio, `qwen3.8-27b-turbo-brilliance-50x-reasoning-instruct-neo-max-mtp`
+(IQ3_S, 96K context), registry empty of the packs, payloads naming only the entity, use case and endpoint paths.
+Final run on the final code:
+
+| Use case | Built | Agent steps | End to end |
+|---|---|---|---|
+| MBP (new entity premium_invoice) | 240 s | planner, entity, use case: all first attempt | s3–s7 200, s8 deployed, 32/32 contract tests |
+| MPA (core auth tables, no new entity) | 75 s | planner, use case: first attempt | deployed, 32/32 |
+| MRX (new entity prescription) | 280 s | entity repaired once (a sandbox crash, now caught at G1), use case first attempt | deployed, 32/32 |
+
+What the earlier live runs showed, and the fixes (general, not per use case):
+
+- MRX could not reference real pharmacies and prescribers (no way to pick existing rows): the model hard-coded NPIs,
+  the FK rules failed, then it looped. Added `lookup`, and "simplify instead of looping" guidance.
+- A rule used `CURRENT_DATE`: the parser now rejects clock functions; `AS_OF_DATE` replaces them.
+- The model invented `join` in endpoint fields three times: raw Pydantic messages did not tell it what to do;
+  `explain()` now says "`join` is not a pack key here: remove it". Lookups with a shared draw store related names.
+- MPA mapped a field to a column of another table; the sandbox caught it and the model repaired it from the database
+  error. The use-case prompt now asks to check each column against the listed tables (later runs: first attempt).
+- A reply with an unclosed ```yaml fence was rejected; the extractor now accepts it. Integer map keys and
+  per-category random amounts were added or redirected after one MRX run failed on them.
+
+Results vary between runs with a local model; a build that fails can be retried (`POST .../retry`), and nothing
+is active unless it passed every gate. The S1–S4 regression snapshot is identical to phase 0.

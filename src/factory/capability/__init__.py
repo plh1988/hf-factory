@@ -6,18 +6,21 @@
   sandbox.py   small stage payloads for gate runs
   gaps.py      gap detection in stage payloads, preflight, builds
 
-Phase 1: packs are written by hand and published through the control plane; builds wait for them.
-Phase 2: agents (with the capability skill) write the packs. See docs/agentic-capability-layer.md.
+  agents.py    planner and authors (LLM + capability skill) with the repair loop; the agent builder
+
+Builds run the agents in the background (FACTORY_CAPABILITY_BUILDER=agents), or wait for packs published by hand
+(manual). See docs/agentic-capability-layer.md.
 """
 
 from __future__ import annotations
 
-from factory.capability.gaps import Builds, Gap, payload_gaps, preflight
+from factory.capability.agents import CapabilityAgents, Skill, agent_builder
+from factory.capability.gaps import Builds, Gap, payload_context, payload_gaps, preflight
 from factory.capability.registry import CapabilityRegistry, PackRejected, Published
 from factory.capability.store import build_pack_store
 
-__all__ = ["Builds", "CapabilityRegistry", "Gap", "PackRejected", "Published", "build_pack_store", "payload_gaps",
-           "preflight", "reset_packs"]
+__all__ = ["Builds", "CapabilityAgents", "CapabilityRegistry", "Gap", "PackRejected", "Published", "Skill", "agent_builder",
+           "build_pack_store", "payload_context", "payload_gaps", "preflight", "reset_packs"]
 
 
 def reset_packs() -> None:

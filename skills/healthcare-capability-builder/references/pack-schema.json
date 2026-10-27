@@ -21,11 +21,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -77,7 +79,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -120,11 +128,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -176,7 +186,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -287,11 +303,13 @@
                 "column": "#/$defs/ColumnRef",
                 "const": "#/$defs/Const",
                 "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "digits": "#/$defs/Digits",
                 "eq": "#/$defs/Equals",
                 "format": "#/$defs/Format",
                 "if": "#/$defs/IfThen",
                 "in": "#/$defs/OneOf",
                 "integer": "#/$defs/Integer",
+                "lookup": "#/$defs/Lookup",
                 "map": "#/$defs/MapValues",
                 "money": "#/$defs/Money",
                 "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -343,7 +361,13 @@
                 "$ref": "#/$defs/Format"
               },
               {
+                "$ref": "#/$defs/Lookup"
+              },
+              {
                 "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/Digits"
               },
               {
                 "$ref": "#/$defs/Equals"
@@ -423,11 +447,13 @@
                 "column": "#/$defs/ColumnRef",
                 "const": "#/$defs/Const",
                 "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "digits": "#/$defs/Digits",
                 "eq": "#/$defs/Equals",
                 "format": "#/$defs/Format",
                 "if": "#/$defs/IfThen",
                 "in": "#/$defs/OneOf",
                 "integer": "#/$defs/Integer",
+                "lookup": "#/$defs/Lookup",
                 "map": "#/$defs/MapValues",
                 "money": "#/$defs/Money",
                 "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -479,7 +505,13 @@
                 "$ref": "#/$defs/Format"
               },
               {
+                "$ref": "#/$defs/Lookup"
+              },
+              {
                 "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/Digits"
               },
               {
                 "$ref": "#/$defs/Equals"
@@ -557,11 +589,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -613,7 +647,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -737,11 +777,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -793,7 +835,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -927,6 +975,45 @@
         "max_days"
       ],
       "title": "DaysBeforeAsOf",
+      "type": "object"
+    },
+    "Digits": {
+      "additionalProperties": false,
+      "description": "A random string of `length` digits (a synthetic code or number, e.g. an 11-digit NDC). Combine with text\nthrough an earlier column and `format`.",
+      "properties": {
+        "op": {
+          "const": "digits",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "length": {
+          "maximum": 18,
+          "minimum": 1,
+          "title": "Length",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "length"
+      ],
+      "title": "Digits",
       "type": "object"
     },
     "EndpointSpec": {
@@ -1154,11 +1241,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1210,7 +1299,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -1312,11 +1407,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1368,7 +1465,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -1406,11 +1509,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1462,7 +1567,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -1500,11 +1611,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1556,7 +1669,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -1676,9 +1795,63 @@
       "title": "Limit",
       "type": "object"
     },
+    "Lookup": {
+      "additionalProperties": false,
+      "description": "A value of `column` from a row of a table generated in an earlier stage (e.g. a pharmacy's npi from provider),\npicked among the rows matching `where` (column -> allowed values), ordered by primary key. Lookups with the same\ndraw, table and where pick the same row, so related columns (npi and org_name) stay consistent. Use it for\nforeign keys to reference tables and for names shown with them.",
+      "properties": {
+        "op": {
+          "const": "lookup",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "per": {
+          "default": "row",
+          "description": "row: a value per row; anchor: one value per anchor row",
+          "enum": [
+            "row",
+            "anchor"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "table": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Table",
+          "type": "string"
+        },
+        "column": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Column",
+          "type": "string"
+        },
+        "where": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Where",
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "table",
+        "column"
+      ],
+      "title": "Lookup",
+      "type": "object"
+    },
     "MapValues": {
       "additionalProperties": false,
-      "description": "Look up each row's value of `of` in `values`; rows without a match get `default`.",
+      "description": "Look up each row's value of `of` in `values`; rows without a match get `default`. Keys are compared as text\n(a key 1 matches the value 1).",
       "properties": {
         "op": {
           "const": "map",
@@ -1697,11 +1870,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1753,7 +1928,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -1838,11 +2019,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1894,7 +2077,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -1939,11 +2128,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -1995,7 +2186,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -2059,11 +2256,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -2115,7 +2314,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -2172,11 +2377,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -2228,7 +2435,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -2283,11 +2496,13 @@
               "column": "#/$defs/ColumnRef",
               "const": "#/$defs/Const",
               "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "digits": "#/$defs/Digits",
               "eq": "#/$defs/Equals",
               "format": "#/$defs/Format",
               "if": "#/$defs/IfThen",
               "in": "#/$defs/OneOf",
               "integer": "#/$defs/Integer",
+              "lookup": "#/$defs/Lookup",
               "map": "#/$defs/MapValues",
               "money": "#/$defs/Money",
               "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -2339,7 +2554,13 @@
               "$ref": "#/$defs/Format"
             },
             {
+              "$ref": "#/$defs/Lookup"
+            },
+            {
               "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/Digits"
             },
             {
               "$ref": "#/$defs/Equals"
@@ -2543,11 +2764,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -2599,7 +2822,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -2646,11 +2875,13 @@
                   "column": "#/$defs/ColumnRef",
                   "const": "#/$defs/Const",
                   "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "digits": "#/$defs/Digits",
                   "eq": "#/$defs/Equals",
                   "format": "#/$defs/Format",
                   "if": "#/$defs/IfThen",
                   "in": "#/$defs/OneOf",
                   "integer": "#/$defs/Integer",
+                  "lookup": "#/$defs/Lookup",
                   "map": "#/$defs/MapValues",
                   "money": "#/$defs/Money",
                   "months_before_as_of": "#/$defs/MonthsBeforeAsOf",
@@ -2702,7 +2933,13 @@
                   "$ref": "#/$defs/Format"
                 },
                 {
+                  "$ref": "#/$defs/Lookup"
+                },
+                {
                   "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/Digits"
                 },
                 {
                   "$ref": "#/$defs/Equals"
@@ -2769,6 +3006,7 @@
           "type": "string"
         },
         "sql": {
+          "description": "SELECT count(*) of violating rows; write AS_OF_DATE for the run's as-of date (never CURRENT_DATE or now())",
           "title": "Sql",
           "type": "string"
         },

@@ -16,18 +16,32 @@ Control-plane docs: /factory/docs. Local only: bind to 127.0.0.1 (no auth on /fa
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI
 
-from factory.capability import Builds, CapabilityRegistry, build_pack_store
+from factory.capability import Builds, CapabilityRegistry, Skill, agent_builder, build_pack_store
+from factory.config import SKILL_DIR
 from factory.control import api_engine_routes, capability_routes, data_engine_routes, run_routes
 from factory.control.deps import TenantApiMount, get_registry, rejected_handler
 from factory.control.errors import JobRejected
 from factory.control.registry import Registry
 
 
-def create_control_app(registry: Registry, capability_layer: bool = False, load_packs: bool = True) -> FastAPI:
+def _agent_builder(registry: Registry, caps: CapabilityRegistry, skill_dir: Path | None, llm: Any = None):
+    """Phase 2: builds run the capability agents with the profile's LLM; packs are published under the stage lock."""
+    from factory.adapters import build_llm
+
+    def publish(doc: dict) -> Any:
+        with registry.lock:  # no stage runs while the catalog changes
+            return caps.publish(doc)
+
+    return agent_builder(llm or build_llm(registry.profile), Skill(skill_dir or SKILL_DIR), publish)
+
+
+def create_control_app(registry: Registry, capability_layer: bool = False, load_packs: bool = True,
+                       builder: str = "manual", skill_dir: Path | None = None, llm: Any = None) -> FastAPI:
     """The control-plane FastAPI app: the data-engine, API-engine and runs routers over one Registry.
 
     After a successful s8 the tenant API is mounted at / on this same app (TenantApiMount), so one server serves
@@ -41,7 +55,7 @@ def create_control_app(registry: Registry, capability_layer: bool = False, load_
     app.state.capabilities = CapabilityRegistry(build_pack_store(registry.profile.packs))
     if load_packs:
         app.state.capabilities.load()
-    app.state.builds = Builds()
+    app.state.builds = Builds(_agent_builder(registry, app.state.capabilities, skill_dir, llm) if builder == "agents" else None)
     app.state.capability_layer = capability_layer  # `factory serve` passes FACTORY_CAPABILITY_LAYER
     app.add_exception_handler(JobRejected, rejected_handler)
     app.include_router(data_engine_routes.router)

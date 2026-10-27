@@ -144,8 +144,13 @@ def test_invalid_and_failing_packs_are_rejected_and_nothing_stays_active():
 
 
 def test_rule_sql_must_be_a_read_only_count():
+    from factory.data_engine.packs.model import check_rule_sql
+
+    assert check_rule_sql(ENTITY["rules"][2]["sql"]) == {"premium_invoice", "member_demographics"}
     for sql in ["DELETE FROM premium_invoice", "SELECT count(*) FROM premium_invoice; DROP TABLE plan",
-                "SELECT count(*) FROM read_csv('/etc/passwd')", "SELECT count(*) FROM premium_invoice WHERE x = 'http://a'"]:
+                "SELECT count(*) FROM read_csv('/etc/passwd')", "SELECT count(*) FROM glob('*')",
+                "SELECT count(*) FROM premium_invoice WHERE getenv('HOME') IS NOT NULL", "SELECT sum(amount_due) FROM premium_invoice",
+                "SELECT count(*) FROM main.premium_invoice", "SELECT count(*) FROM"]:
         doc = copy.deepcopy(ENTITY)
         doc["rules"] = [{"id": "F-X-01", "description": "x", "sql": sql}]
         with pytest.raises(ValueError):
@@ -181,3 +186,29 @@ def test_use_case_slots_never_move_core_assets():
     with pytest.raises(PackRejected):
         CapabilityRegistry(build_pack_store(None)).check(parse_pack({**USE_CASE, "id": "uc.PCS",
                                                                      "use_case": {**USE_CASE["use_case"], "code": "PCS"}}))
+
+
+def test_lookup_picks_existing_rows_deterministically_and_rules_use_as_of():
+    from factory.data_engine import rules as R
+
+    doc = copy.deepcopy(ENTITY)
+    doc["entity"]["columns"].append({"name": "pharmacy_npi", "type": "string", "references": {"entity": "provider", "column": "npi"},
+                                     "gen": {"op": "lookup", "draw": "pharmacy", "per": "anchor", "table": "provider",
+                                             "column": "npi", "where": {"facility_type": ["PHARMACY"]}}})
+    doc["rules"].append({"id": "T-PREMIUM-02", "description": "no future bills", "sql": "SELECT count(*) FROM premium_invoice WHERE billing_month > AS_OF_DATE"})
+    pub = CapabilityRegistry(build_pack_store(None)).publish(doc)  # G2: the FK rule on pharmacy_npi passes; G3: deterministic
+    assert all(g["passed"] for g in pub.gates)
+    rule = next(r for r in R.pack_rules("2026-10-12") if r.id == "T-PREMIUM-02")
+    assert "DATE '2026-10-12'" in rule.sql and "AS_OF_DATE" not in rule.sql
+
+    for gen, error in [({"op": "lookup", "draw": "x", "table": "claim_header", "column": "claim_id"}, "not generated before stage s4")]:
+        bad = copy.deepcopy(doc)
+        bad["entity"]["columns"][-1]["gen"] = gen
+        with pytest.raises(ValueError, match=error):
+            parse_pack(bad)
+    for sql in ["SELECT count(*) FROM premium_invoice WHERE billing_month > CURRENT_DATE",
+                "SELECT count(*) FROM premium_invoice WHERE billing_month > now()"]:
+        bad = copy.deepcopy(doc)
+        bad["rules"][-1]["sql"] = sql
+        with pytest.raises(ValueError):
+            parse_pack(bad)

@@ -18,6 +18,7 @@ from factory.contracts import S2Output
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = REPO_ROOT / "config"
+SKILL_DIR = REPO_ROOT / "skills" / "healthcare-capability-builder"
 
 ProfileName = Literal["memory", "memory-offline", "memory-local", "gcp"]
 
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
     s2_json: str | None = None  # FACTORY_S2_JSON: s2 output inline (Cloud Run tasks/services get it this way)
     config_dir: Path | None = None  # FACTORY_CONFIG_DIR: where profile yaml files live when installed (e.g. /app/config)
     capability_layer: bool = False  # FACTORY_CAPABILITY_LAYER: payload gaps start a capability build (202) instead of a 4xx
+    capability_builder: Literal["auto", "agents", "manual"] = "auto"  # FACTORY_CAPABILITY_BUILDER; auto: agents unless the LLM is offline
+    skill_dir: Path | None = None  # FACTORY_SKILL_DIR: the capability skill folder (default: <repo>/skills/healthcare-capability-builder)
     model_config = SettingsConfigDict(env_prefix="FACTORY_", env_file=REPO_ROOT / ".env", extra="ignore")
 
 

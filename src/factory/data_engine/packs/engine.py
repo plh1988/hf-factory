@@ -22,7 +22,8 @@ from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext, dates
 from factory.data_engine.packs.model import (
     ANCHOR_STREAM, AddDays, AllOf, AnchorField, AnyOf, Bernoulli, Choice, ColumnRef, Const, DaysBeforeAsOf, EntityPack,
-    Equals, Format, IfThen, Integer, MapValues, Money, MonthsBeforeAsOf, Not, OneOf, RecipeFlag, RowId, RowIndex,
+    Digits, Equals, Format, IfThen, Integer, Lookup, MapValues, Money, MonthsBeforeAsOf, Not, OneOf, RecipeFlag, RowId,
+    RowIndex,
 )
 from factory.data_engine.rng import RowRandom, money
 
@@ -66,6 +67,24 @@ class Evaluator:
             self._anchor_rr = self.ctx.rr(f"{self.entity}:anchor", self.frame.anchor_keys)
         return self._anchor_rr
 
+    def _candidates(self, e: Lookup) -> list:
+        """The lookup column of the matching rows, ordered by the table's primary key (read once per evaluator).
+        Same draw + table + where => same row for every lookup, so e.g. a pharmacy's npi and org_name stay together.
+        Identifiers are validated by the pack model (snake_case names); values are bound."""
+        from factory.data_engine import catalog
+
+        key = (e.table, e.column, tuple(sorted((k, tuple(v)) for k, v in e.where.items())))
+        cache = self.__dict__.setdefault("_lookup_cache", {})
+        if key not in cache:
+            conds, params = ["TRUE"], []
+            for col, values in sorted(e.where.items()):
+                conds.append(f'CAST("{col}" AS VARCHAR) IN ({", ".join("?" * len(values))})')
+                params += [str(v) for v in values]
+            pk = catalog.PRIMARY_KEY[e.table]
+            sql = f'SELECT "{e.column}" AS v FROM "{e.table}" WHERE {" AND ".join(conds)} ORDER BY "{pk}"'
+            cache[key] = [r["v"] for r in self.ctx.stores.tables.query(sql, params).to_pylist()]
+        return cache[key]
+
     def bool(self, expr) -> np.ndarray:
         return np.asarray(self.eval(expr), dtype=bool)
 
@@ -108,6 +127,15 @@ class Evaluator:
             values = {k: self.frame.fields.get(k, self.cols.get(k)) for k in names}
             return np.array([e.template.format(index=int(self.index[i]), **{k: _plain(v[i]) for k, v in values.items()})
                              for i in range(n)], dtype=object)
+        if isinstance(e, Lookup):
+            options = self._candidates(e)
+            if not options:
+                return np.full(n, None, dtype=object)
+            u = self._rr(e).u(e.draw)
+            return np.asarray(options, dtype=object)[np.minimum((u * len(options)).astype(np.int64), len(options) - 1)]
+        if isinstance(e, Digits):
+            numbers = (self._rr(e).u(e.draw) * 10 ** e.length).astype(np.int64)
+            return np.array([f"{x:0{e.length}d}"[-e.length:] for x in numbers], dtype=object)
         if isinstance(e, MapValues):
             return np.array([e.values.get(str(x), e.default) for x in self.eval(e.of)], dtype=object)
         if isinstance(e, Equals):

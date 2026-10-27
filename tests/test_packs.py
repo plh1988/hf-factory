@@ -123,3 +123,14 @@ def test_skill_references_are_up_to_date():
     script = Path(__file__).parent.parent / "scripts" / "build_skill_refs.py"
     result = subprocess.run([sys.executable, str(script), "--check"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_digits_and_numeric_map_keys():
+    from factory.data_engine.packs.model import parse_pack
+
+    doc = _sdoh_doc()
+    doc["entity"]["columns"].append({"name": "ref_code", "type": "string", "gen": {"op": "digits", "draw": "ref", "length": 11}})
+    doc["entity"]["columns"].append({"name": "weight", "type": "float",
+                                     "gen": {"op": "map", "of": {"op": "const", "value": 2}, "values": {1: 0.5, 2: 1.5}, "default": 0}})
+    pack = parse_pack(doc)
+    assert pack.entity.columns[-1].gen.values == {"1": 0.5, "2": 1.5}

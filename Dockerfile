@@ -12,6 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     FACTORY_CONFIG_DIR=/app/config \
+    FACTORY_SKILL_DIR=/app/skills/healthcare-capability-builder \
     FACTORY_PROFILE=memory-offline \
     PORT=8080
 
@@ -23,6 +24,8 @@ COPY src ./src
 RUN pip install ".[gcp]"
 
 COPY config ./config
+# the capability skill: the agents read it at run time (FACTORY_SKILL_DIR)
+COPY skills ./skills
 
 RUN useradd --create-home --uid 10001 factory
 USER factory

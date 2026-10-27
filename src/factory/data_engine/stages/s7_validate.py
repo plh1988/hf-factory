@@ -41,7 +41,7 @@ def _base(rule_id: str) -> str:
 def all_rules(ctx: GenContext, present: set[str]) -> list[R.Rule]:
     """Every rule that applies to this run: foreign keys, domain rules, rules of active capability packs, and a P-01
     stamp check per generated entity."""
-    return (R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + R.pack_rules()
+    return (R.fk_rules() + R.domain_rules(str(ctx.as_of), ctx.tenant_id) + R.pack_rules(str(ctx.as_of))
             + [R.p01_rule(e, ctx.tenant_id) for e in sorted(present)])
 
 

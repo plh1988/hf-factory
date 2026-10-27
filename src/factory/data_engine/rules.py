@@ -314,7 +314,7 @@ def domain_rules(as_of: str, tenant: str) -> list[Rule]:
     ]
 
 
-def pack_rules() -> list[Rule]:
+def pack_rules(as_of: str = "1970-01-01") -> list[Rule]:
     """Rules of the active entity packs: a foreign-key rule per column with `references`, then the pack's own rules.
     Imported late: packs import the catalog, and the rule catalog must not depend on pack loading order."""
     from factory.data_engine import packs
@@ -328,7 +328,8 @@ def pack_rules() -> list[Rule]:
                 out.append(Rule(f"R-01:{child}.{c.name}", f"{child}.{c.name} references {parent}.{pk}",
                                 f"SELECT count(*) FROM {child} c WHERE c.{c.name} IS NOT NULL "
                                 f"AND NOT EXISTS (SELECT 1 FROM {parent} p WHERE p.{pk} = c.{c.name})", [child, parent]))
-        out += [Rule(r.id, r.description, " ".join(r.sql.split()), r.needs or sorted(sql_tables(r.sql))) for r in p.rules]
+        out += [Rule(r.id, r.description, " ".join(r.sql.split()).replace("AS_OF_DATE", f"DATE '{as_of}'"),
+                     r.needs or sorted(sql_tables(r.sql))) for r in p.rules]
     return out
 
 

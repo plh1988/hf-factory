@@ -21,7 +21,9 @@ Every column's `gen` (and `rows.when`) is one expression. Expressions nest: wher
 | `months_before_as_of` | The first day of the month `months` months before the as-of month (0 = the as-of month). | `months`: integer or Expr |
 | `add_days` | A date expression plus `days` (a number or a per-row expression; negative moves back). Null stays null. | `of`: Expr, `days`: integer or Expr |
 | `format` | Text from a template: {field} for anchor fields and earlier columns, {index} for the row index, with Python format specs, e.g. "INV-{member_number}-{index:02d}". | `template`: string |
-| `map` | Look up each row's value of `of` in `values`; rows without a match get `default`. | `of`: Expr, `values`: object, `default`: any value, optional |
+| `lookup` | A value of `column` from a row of a table generated in an earlier stage (e.g. a pharmacy's npi from provider), picked among the rows matching `where` (column -> allowed values), ordered by primary key. Lookups with the same draw, table and where pick the same row, so related columns (npi and org_name) stay consistent. Use it for foreign keys to reference tables and for names shown with them. | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `table`: string, `column`: string, `where`: dict[str, list[str]], optional |
+| `map` | Look up each row's value of `of` in `values`; rows without a match get `default`. Keys are compared as text (a key 1 matches the value 1). | `of`: Expr, `values`: object, `default`: any value, optional |
+| `digits` | A random string of `length` digits (a synthetic code or number, e.g. an 11-digit NDC). Combine with text through an earlier column and `format`. | `draw`: string, `per`: typing.Literal['row', 'anchor'], optional, `length`: integer |
 | `eq` | True where `of` equals `value`. | `of`: Expr, `value`: any value |
 | `in` | True where `of` is one of `values`. | `of`: Expr, `values`: list |
 | `any` | Boolean OR of the expressions. | `of`: list of Expr |

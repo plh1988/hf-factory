@@ -22,7 +22,7 @@ import string
 import zlib
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 NAME = r"^[a-z][a-z0-9_]*$"
 DRAW = r"^[a-z][a-z0-9_:]*$"
@@ -159,13 +159,49 @@ class Format(_Op):
     template: str
 
 
+class Lookup(_Op):
+    """A value of `column` from a row of a table generated in an earlier stage (e.g. a pharmacy's npi from provider),
+    picked among the rows matching `where` (column -> allowed values), ordered by primary key. Lookups with the same
+    draw, table and where pick the same row, so related columns (npi and org_name) stay consistent. Use it for
+    foreign keys to reference tables and for names shown with them."""
+
+    op: Literal["lookup"]
+    draw: str = Field(pattern=DRAW)
+    per: Literal["row", "anchor"] = Field("row", description="row: a value per row; anchor: one value per anchor row")
+    table: str = Field(pattern=NAME)
+    column: str = Field(pattern=NAME)
+    where: dict[str, list[str]] = Field(default_factory=dict)
+
+
 class MapValues(_Op):
-    """Look up each row's value of `of` in `values`; rows without a match get `default`."""
+    """Look up each row's value of `of` in `values`; rows without a match get `default`. Keys are compared as text
+    (a key 1 matches the value 1)."""
 
     op: Literal["map"]
     of: "Expr"
     values: dict[str, Any]
     default: Any = None
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _text_keys(cls, v: Any) -> Any:
+        if isinstance(v, dict):
+            nested = [str(k) for k, x in v.items() if isinstance(x, dict) and "op" in x]
+            if nested:
+                raise ValueError(f"map values are constants, not expressions (keys {nested}); to vary a random value by "
+                                 "category, map its bounds instead, e.g. {op: money, low: {op: map, ...}, high: {op: map, ...}}")
+            return {str(k): x for k, x in v.items()}
+        return v
+
+
+class Digits(_Op):
+    """A random string of `length` digits (a synthetic code or number, e.g. an 11-digit NDC). Combine with text
+    through an earlier column and `format`."""
+
+    op: Literal["digits"]
+    draw: str = Field(pattern=DRAW)
+    per: Literal["row", "anchor"] = Field("row", description="row: a value per row; anchor: one value per anchor row")
+    length: int = Field(ge=1, le=18)
 
 
 class Equals(_Op):
@@ -222,7 +258,7 @@ class RowId(_Op):
 
 Expr = Annotated[
     Union[Const, AnchorField, ColumnRef, RowIndex, RecipeFlag, Choice, Bernoulli, Integer, Money, DaysBeforeAsOf,
-          MonthsBeforeAsOf, AddDays, Format, MapValues, Equals, OneOf, AnyOf, AllOf, Not, IfThen, RowId],
+          MonthsBeforeAsOf, AddDays, Format, Lookup, MapValues, Digits, Equals, OneOf, AnyOf, AllOf, Not, IfThen, RowId],
     Field(discriminator="op"),
 ]
 for _m in (Bernoulli, Money, MonthsBeforeAsOf, AddDays, MapValues, Equals, OneOf, AnyOf, AllOf, Not, IfThen):
@@ -243,6 +279,14 @@ def _recipe_fields() -> set[str]:
 
 
 _RECIPE_FIELDS = _recipe_fields()
+
+
+def _earlier_tables(stage: str) -> set[str]:
+    """Core tables generated before `stage` (lookups read them while the stage runs)."""
+    from factory.data_engine import catalog
+
+    order = ["s3", "s4", "s5", "s6"]
+    return {e for st in order[:order.index(stage)] for e in catalog.STAGE_ENTITIES[st] if e in catalog.CORE_ENTITIES}
 
 
 # ------------------------------------------------------------------ entity packs
@@ -287,7 +331,8 @@ class RuleSpec(BaseModel):
 
     id: str = Field(pattern=RULE_ID, description="family letter first (R/T/F/C/P/A), e.g. F-PREMIUM-01")
     description: str
-    sql: str
+    sql: str = Field(description="SELECT count(*) of violating rows; write AS_OF_DATE for the run's as-of date (never "
+                                 "CURRENT_DATE or now())")
     needs: list[str] = Field(default_factory=list, description="tables the rule reads (it is skipped without them)")
 
 
@@ -338,6 +383,11 @@ class EntitySpec(BaseModel):
                 raise ValueError(f"anchor field {e.field!r} unknown for anchor {self.anchor}; known: {sorted(anchor_fields)}")
             if isinstance(e, RecipeFlag) and e.flag not in _RECIPE_FIELDS:
                 raise ValueError(f"recipe flag {e.flag!r} is not a Scenario field")
+            if isinstance(e, Lookup):
+                earlier = _earlier_tables(self.stage)
+                if e.table not in earlier:
+                    raise ValueError(f"lookup table {e.table!r} is not generated before stage {self.stage}; "
+                                     f"use one of {sorted(earlier)}")
         return self
 
 
@@ -553,23 +603,49 @@ def pack_json_schema() -> dict:
 
 
 # ------------------------------------------------------------------ helpers
-_SQL_BANNED = re.compile(r";|--|/\*|\b(insert|update|delete|drop|alter|create|attach|detach|copy|pragma|install|load|call|"
-                         r"export|import|set|grant|truncate)\b|\b(read_\w+|glob|httpfs)\s*\(|://", re.I)
+def _parse_rule(sql: str):
+    """Parse rule SQL (DuckDB dialect) into one SELECT, or raise ValueError with the reason."""
+    import sqlglot
+    from sqlglot import exp
+
+    try:
+        stmts = [x for x in sqlglot.parse(sql, read="duckdb") if x is not None]
+    except sqlglot.errors.SqlglotError as exc:
+        raise ValueError(f"rule SQL does not parse: {str(exc).splitlines()[0][:200]}") from None
+    if len(stmts) != 1 or not isinstance(stmts[0], exp.Select):
+        raise ValueError("rule SQL must be exactly one SELECT statement")
+    return stmts[0], exp
 
 
-def check_rule_sql(sql: str) -> None:
-    """Rule SQL must be a single read-only SELECT count(*) over plain table names (phase 1 check; phase 2 parses)."""
-    text = " ".join(sql.split())
-    if not re.match(r"(?i)^select count\(\*\) from [a-z_][a-z0-9_]*\b", text):
-        raise ValueError(f"rule SQL must start with SELECT count(*) FROM <table>: {text[:80]!r}")
-    bad = _SQL_BANNED.search(text)
-    if bad:
-        raise ValueError(f"rule SQL may not contain {bad.group(0)!r}")
+def check_rule_sql(sql: str) -> set[str]:
+    """Rule SQL must be one read-only SELECT whose only output is count(*), over plain table names, with functions
+    the parser knows. Returns the tables it reads. Parsed with sqlglot (phase 2: agents write these rules)."""
+    sel, exp = _parse_rule(sql)
+    outputs = sel.expressions
+    if len(outputs) != 1 or not (isinstance(outputs[0], exp.Count) and isinstance(outputs[0].this, exp.Star)):
+        raise ValueError("rule SQL must return exactly count(*): the number of violating rows")
+    for node in sel.walk():
+        if isinstance(node, (exp.Insert, exp.Update, exp.Delete, exp.Drop, exp.Create, exp.Command, exp.Alter)):
+            raise ValueError(f"rule SQL may not contain {type(node).__name__.upper()}")
+        if isinstance(node, exp.Anonymous):
+            raise ValueError(f"rule SQL uses an unknown function {node.name!r}")
+        if isinstance(node, exp.Func) and type(node).__name__.lower().startswith("read"):
+            raise ValueError(f"rule SQL may not read files ({node.sql()[:60]})")
+        if isinstance(node, (exp.CurrentDate, exp.CurrentTimestamp, exp.CurrentTime, exp.CurrentDatetime)):
+            raise ValueError("rule SQL may not read the clock (CURRENT_DATE, now()); write AS_OF_DATE for the run's as-of date")
+    ctes = {c.alias_or_name.lower() for c in sel.find_all(exp.CTE)}
+    tables = set()
+    for t in sel.find_all(exp.Table):
+        if not isinstance(t.this, exp.Identifier) or t.args.get("db") or t.args.get("catalog"):
+            raise ValueError(f"rule SQL may only read plain table names, not {t.sql()[:60]!r}")
+        if t.name.lower() not in ctes:
+            tables.add(t.name.lower())
+    return tables
 
 
 def sql_tables(sql: str) -> set[str]:
-    """Table names after FROM / JOIN."""
-    return {m.lower() for m in re.findall(r"(?i)\b(?:from|join)\s+([a-z_][a-z0-9_]*)\b", sql)}
+    """Tables a rule reads (parsed)."""
+    return check_rule_sql(sql)
 
 
 def _digest(pack: BaseModel) -> str:

@@ -47,5 +47,6 @@ llm:
   project: "${s2.project_id}"
   location: "${s2.region}"
   model: gemini-2.5-flash
+  max_output_tokens: 8192             # capability agents write packs of several thousand tokens
   embedding_model: text-embedding-005
   embedding_dim: 256

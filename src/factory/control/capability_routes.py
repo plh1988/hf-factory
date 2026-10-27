@@ -71,6 +71,23 @@ def run_preflight(body: dict[str, Any] = Body(..., examples=[{"payloads": {"s4":
     return preflight(builds, payloads)
 
 
+@router.post("/factory/capabilities/builds/{build_id}/retry", summary="Run the agents again for a FAILED or UNDERSPECIFIED build")
+def retry_build(build_id: str, builds: Builds = Depends(get_builds)) -> Any:
+    build = builds.retry(build_id)
+    if build is None:
+        raise JobRejected(RejectCode.NO_BUILD, f"No build {build_id!r}.")
+    return build.view()
+
+
+@router.get("/factory/capabilities/builds/{build_id}/log", summary="Every agent step of a build, with prompts and responses")
+def build_log(build_id: str, builds: Builds = Depends(get_builds)) -> Any:
+    build = builds.get(build_id)
+    if build is None:
+        raise JobRejected(RejectCode.NO_BUILD, f"No build {build_id!r}.")
+    return {"build_id": build_id, "status": build.status, "plan": build.plan,
+            "steps": [{**s.summary(), "prompt": s.prompt, "response": s.response} for s in build.steps]}
+
+
 @router.get("/factory/capabilities/builds/{build_id}", summary="Build status: READY once active packs cover every gap")
 def get_build(build_id: str, builds: Builds = Depends(get_builds)) -> Any:
     build = builds.get(build_id)
@@ -81,12 +98,12 @@ def get_build(build_id: str, builds: Builds = Depends(get_builds)) -> Any:
 
 def build_started(builds: Builds, stage: str, payload: dict[str, Any]) -> JSONResponse | None:
     """202 fallback for a stage payload with gaps (capability layer on); None when the payload has no gaps."""
-    from factory.capability import payload_gaps
+    from factory.capability import payload_context, payload_gaps
 
     gaps = payload_gaps(stage, payload)
     if not gaps:
         return None
-    view = builds.start(gaps, stage).view()
+    view = builds.start(gaps, stage, payload_context({stage: payload})).view()
     return JSONResponse({"error": "CAPABILITY_BUILD_STARTED", "message": f"{stage} asks for capabilities the engines do not have yet. "
                          "Follow the build; resend this payload when it is READY. Preflight all payloads first to build them together.",
                          **view}, status_code=202)
