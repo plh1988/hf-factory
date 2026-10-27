@@ -1,7 +1,7 @@
 """Stage s4: members, enrollment, PCP assignments, risk, gaps, SDOH, caregivers. Sharded by member index.
 
 gen_shard draws each member's core facts into a MemberBatch (LOB, plan, scenario), then one writer per entity
-adds its own draws. Every value comes from the member's own random stream (seed, entity, member index), so rows
+adds its own draws; entities declared as capability packs (sdoh_indicator) are run by the generic pack generator. Every value comes from the member's own random stream (seed, entity, member index), so rows
 are identical whichever shard or worker produces them. Member scenarios (PEV, MBN, MPS, MPC, MAS) are assigned
 first and force the facts their recipes need (retro termination, caregiver scope, transport need, PCP switch, ...).
 """
@@ -15,7 +15,7 @@ import numpy as np
 import pyarrow as pa
 
 from factory.codes import EnrollmentStatus, GeoType, Lob, PcpAssignmentStatus
-from factory.data_engine import catalog, keys
+from factory.data_engine import catalog, keys, packs
 from factory.data_engine import scenarios as recipes
 from factory.data_engine.context import GenContext, dates
 from factory.data_engine.rng import RowRandom
@@ -111,10 +111,9 @@ def gen_shard(ctx: GenContext, lo: int, hi: int, inp: MemberInputs) -> None:
         _write_risk_scores(ctx, b)
     if ctx.wants("care_gap"):
         _write_care_gaps(ctx, b)
-    if ctx.wants("sdoh_indicator"):
-        _write_sdoh(ctx, b)
     if ctx.wants("family_relationship"):
         _write_household(ctx, b)
+    _write_member_packs(ctx, b)
 
 
 def _members(ctx: GenContext, lo: int, hi: int, inp: MemberInputs) -> MemberBatch:
@@ -307,23 +306,16 @@ def _write_care_gaps(ctx: GenContext, b: MemberBatch) -> None:
     }, scenario=scen[gi])
 
 
-def _write_sdoh(ctx: GenContext, b: MemberBatch) -> None:
-    """SDOH screening for 60% of members; transport_need scenarios have a positive transport screen."""
-    rr, idx, scen = b.rr, b.idx, b.scen
-    transport = recipes.tagged(scen, lambda s: s.transport_need)
-    s = rr.bernoulli("screened", 0.6) | transport
-    pos_rate = np.where(b.lob == Lob.MEDICAID_MCO, 0.40, 0.18)
-    domain = np.where(transport, "TRANSPORT", rr.choice("sdoh_domain", ["FOOD", "HOUSING", "TRANSPORT", "UTILITIES", "SAFETY", "ISOLATION"]))
-    positive = rr.bernoulli("sdoh_pos", pos_rate) | transport
-    ctx.write("sdoh_indicator", {
-        "indicator_id": pa.array(ctx.ids("sdoh_indicator", idx[s])),
-        "member_id": pa.array(b.member_id[s].tolist()),
-        "domain": pa.array(domain[s].tolist()),
-        "positive": pa.array(positive[s]),
-        "screened_dt": dates(ctx.as_of - rr.integers("screened_dt", 10, 300)[s].astype("timedelta64[D]")),
-        "source": pa.array(rr.choice("sdoh_src", ["SCREENER", "CLAIMS_Z_CODE", "SELF_REPORT"])[s].tolist()),
-        "referral_status": pa.array(rr.choice("sdoh_ref", ["NONE", "SENT", "CONNECTED"], [60, 25, 15])[s].tolist()),
-    }, scenario=scen[s])
+def _write_member_packs(ctx: GenContext, b: MemberBatch) -> None:
+    """Member-anchored entities declared as capability packs (e.g. sdoh_indicator), run by the generic generator."""
+    member_packs = [pk for pk in packs.for_anchor("member") if ctx.wants(pk.entity.name)]
+    if not member_packs:
+        return
+    frame = packs.AnchorFrame("member", b.idx, b.scen, {
+        "member_id": b.member_id, "member_number": np.array(b.member_no, dtype=object), "lob": b.lob,
+        "plan_id": b.plan_id, "sex": b.sex})
+    for pk in member_packs:
+        packs.generate(ctx, pk, frame)
 
 
 def _write_household(ctx: GenContext, b: MemberBatch) -> None:

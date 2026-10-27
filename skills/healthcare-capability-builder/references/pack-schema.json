@@ -1,0 +1,1095 @@
+{
+  "$defs": {
+    "AllOf": {
+      "additionalProperties": false,
+      "description": "Boolean AND of the expressions.",
+      "properties": {
+        "op": {
+          "const": "all",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "all": "#/$defs/AllOf",
+                "anchor": "#/$defs/AnchorField",
+                "any": "#/$defs/AnyOf",
+                "bernoulli": "#/$defs/Bernoulli",
+                "choice": "#/$defs/Choice",
+                "const": "#/$defs/Const",
+                "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "if": "#/$defs/IfThen",
+                "integer": "#/$defs/Integer",
+                "map": "#/$defs/MapValues",
+                "not": "#/$defs/Not",
+                "recipe": "#/$defs/RecipeFlag",
+                "row_id": "#/$defs/RowId"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Const"
+              },
+              {
+                "$ref": "#/$defs/AnchorField"
+              },
+              {
+                "$ref": "#/$defs/RecipeFlag"
+              },
+              {
+                "$ref": "#/$defs/Choice"
+              },
+              {
+                "$ref": "#/$defs/Bernoulli"
+              },
+              {
+                "$ref": "#/$defs/Integer"
+              },
+              {
+                "$ref": "#/$defs/DaysBeforeAsOf"
+              },
+              {
+                "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/AnyOf"
+              },
+              {
+                "$ref": "#/$defs/AllOf"
+              },
+              {
+                "$ref": "#/$defs/Not"
+              },
+              {
+                "$ref": "#/$defs/IfThen"
+              },
+              {
+                "$ref": "#/$defs/RowId"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Of",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "of"
+      ],
+      "title": "AllOf",
+      "type": "object"
+    },
+    "AnchorField": {
+      "additionalProperties": false,
+      "description": "A column of the anchor row (see ANCHOR_FIELDS).",
+      "properties": {
+        "op": {
+          "const": "anchor",
+          "title": "Op",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "field"
+      ],
+      "title": "AnchorField",
+      "type": "object"
+    },
+    "AnyOf": {
+      "additionalProperties": false,
+      "description": "Boolean OR of the expressions.",
+      "properties": {
+        "op": {
+          "const": "any",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "all": "#/$defs/AllOf",
+                "anchor": "#/$defs/AnchorField",
+                "any": "#/$defs/AnyOf",
+                "bernoulli": "#/$defs/Bernoulli",
+                "choice": "#/$defs/Choice",
+                "const": "#/$defs/Const",
+                "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                "if": "#/$defs/IfThen",
+                "integer": "#/$defs/Integer",
+                "map": "#/$defs/MapValues",
+                "not": "#/$defs/Not",
+                "recipe": "#/$defs/RecipeFlag",
+                "row_id": "#/$defs/RowId"
+              },
+              "propertyName": "op"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Const"
+              },
+              {
+                "$ref": "#/$defs/AnchorField"
+              },
+              {
+                "$ref": "#/$defs/RecipeFlag"
+              },
+              {
+                "$ref": "#/$defs/Choice"
+              },
+              {
+                "$ref": "#/$defs/Bernoulli"
+              },
+              {
+                "$ref": "#/$defs/Integer"
+              },
+              {
+                "$ref": "#/$defs/DaysBeforeAsOf"
+              },
+              {
+                "$ref": "#/$defs/MapValues"
+              },
+              {
+                "$ref": "#/$defs/AnyOf"
+              },
+              {
+                "$ref": "#/$defs/AllOf"
+              },
+              {
+                "$ref": "#/$defs/Not"
+              },
+              {
+                "$ref": "#/$defs/IfThen"
+              },
+              {
+                "$ref": "#/$defs/RowId"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Of",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "of"
+      ],
+      "title": "AnyOf",
+      "type": "object"
+    },
+    "Bernoulli": {
+      "additionalProperties": false,
+      "description": "True with probability p (a number, or an expression giving one per row).",
+      "properties": {
+        "op": {
+          "const": "bernoulli",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "p": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "discriminator": {
+                "mapping": {
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "if": "#/$defs/IfThen",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            }
+          ],
+          "title": "P"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "p"
+      ],
+      "title": "Bernoulli",
+      "type": "object"
+    },
+    "Choice": {
+      "additionalProperties": false,
+      "description": "One of `options`, weighted by `weights` (uniform when omitted). Options are listed explicitly, in order.",
+      "properties": {
+        "op": {
+          "const": "choice",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "description": "draw name: the random value is fixed by (seed, stream, row key, draw)",
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "options": {
+          "items": {},
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        },
+        "weights": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weights"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "options"
+      ],
+      "title": "Choice",
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "string",
+            "bool",
+            "int",
+            "float",
+            "date"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "gen": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Gen"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "gen"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "Const": {
+      "additionalProperties": false,
+      "description": "A fixed value.",
+      "properties": {
+        "op": {
+          "const": "const",
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value"
+        }
+      },
+      "required": [
+        "op",
+        "value"
+      ],
+      "title": "Const",
+      "type": "object"
+    },
+    "DaysBeforeAsOf": {
+      "additionalProperties": false,
+      "description": "A date: as_of minus a uniform number of days in [min_days, max_days). Generators never read the clock.",
+      "properties": {
+        "op": {
+          "const": "days_before_as_of",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "min_days": {
+          "minimum": 0,
+          "title": "Min Days",
+          "type": "integer"
+        },
+        "max_days": {
+          "title": "Max Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "min_days",
+        "max_days"
+      ],
+      "title": "DaysBeforeAsOf",
+      "type": "object"
+    },
+    "EntitySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "anchor": {
+          "const": "member",
+          "title": "Anchor",
+          "type": "string"
+        },
+        "primary_key": {
+          "title": "Primary Key",
+          "type": "string"
+        },
+        "rows": {
+          "$ref": "#/$defs/Rows",
+          "default": {
+            "per_anchor": "zero_or_one",
+            "when": null
+          }
+        },
+        "random_stream": {
+          "default": "own",
+          "description": "own: streams of this entity (independent of every other entity). anchor: the anchor's streams, sharing draw names with core generators; allowed for core packs only",
+          "enum": [
+            "own",
+            "anchor"
+          ],
+          "title": "Random Stream",
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "minItems": 1,
+          "title": "Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "anchor",
+        "primary_key",
+        "columns"
+      ],
+      "title": "EntitySpec",
+      "type": "object"
+    },
+    "IfThen": {
+      "additionalProperties": false,
+      "description": "`then` where `cond` is true, otherwise `else`.",
+      "properties": {
+        "op": {
+          "const": "if",
+          "title": "Op",
+          "type": "string"
+        },
+        "cond": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Cond"
+        },
+        "then": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Then"
+        },
+        "else": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Else"
+        }
+      },
+      "required": [
+        "op",
+        "cond",
+        "then",
+        "else"
+      ],
+      "title": "IfThen",
+      "type": "object"
+    },
+    "Integer": {
+      "additionalProperties": false,
+      "description": "Uniform integer in [low, high).",
+      "properties": {
+        "op": {
+          "const": "integer",
+          "title": "Op",
+          "type": "string"
+        },
+        "draw": {
+          "pattern": "^[a-z][a-z0-9_:]*$",
+          "title": "Draw",
+          "type": "string"
+        },
+        "low": {
+          "title": "Low",
+          "type": "integer"
+        },
+        "high": {
+          "title": "High",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "draw",
+        "low",
+        "high"
+      ],
+      "title": "Integer",
+      "type": "object"
+    },
+    "MapValues": {
+      "additionalProperties": false,
+      "description": "Look up each row's value of `of` in `values`; rows without a match get `default`.",
+      "properties": {
+        "op": {
+          "const": "map",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Of"
+        },
+        "values": {
+          "additionalProperties": true,
+          "title": "Values",
+          "type": "object"
+        },
+        "default": {
+          "default": null,
+          "title": "Default"
+        }
+      },
+      "required": [
+        "op",
+        "of",
+        "values"
+      ],
+      "title": "MapValues",
+      "type": "object"
+    },
+    "Not": {
+      "additionalProperties": false,
+      "description": "Boolean NOT of the expression.",
+      "properties": {
+        "op": {
+          "const": "not",
+          "title": "Op",
+          "type": "string"
+        },
+        "of": {
+          "discriminator": {
+            "mapping": {
+              "all": "#/$defs/AllOf",
+              "anchor": "#/$defs/AnchorField",
+              "any": "#/$defs/AnyOf",
+              "bernoulli": "#/$defs/Bernoulli",
+              "choice": "#/$defs/Choice",
+              "const": "#/$defs/Const",
+              "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+              "if": "#/$defs/IfThen",
+              "integer": "#/$defs/Integer",
+              "map": "#/$defs/MapValues",
+              "not": "#/$defs/Not",
+              "recipe": "#/$defs/RecipeFlag",
+              "row_id": "#/$defs/RowId"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Const"
+            },
+            {
+              "$ref": "#/$defs/AnchorField"
+            },
+            {
+              "$ref": "#/$defs/RecipeFlag"
+            },
+            {
+              "$ref": "#/$defs/Choice"
+            },
+            {
+              "$ref": "#/$defs/Bernoulli"
+            },
+            {
+              "$ref": "#/$defs/Integer"
+            },
+            {
+              "$ref": "#/$defs/DaysBeforeAsOf"
+            },
+            {
+              "$ref": "#/$defs/MapValues"
+            },
+            {
+              "$ref": "#/$defs/AnyOf"
+            },
+            {
+              "$ref": "#/$defs/AllOf"
+            },
+            {
+              "$ref": "#/$defs/Not"
+            },
+            {
+              "$ref": "#/$defs/IfThen"
+            },
+            {
+              "$ref": "#/$defs/RowId"
+            }
+          ],
+          "title": "Of"
+        }
+      },
+      "required": [
+        "op",
+        "of"
+      ],
+      "title": "Not",
+      "type": "object"
+    },
+    "RecipeFlag": {
+      "additionalProperties": false,
+      "description": "True where the anchor row's scenario recipe sets `flag` (a Scenario field in scenarios.py).",
+      "properties": {
+        "op": {
+          "const": "recipe",
+          "title": "Op",
+          "type": "string"
+        },
+        "flag": {
+          "title": "Flag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "flag"
+      ],
+      "title": "RecipeFlag",
+      "type": "object"
+    },
+    "RowId": {
+      "additionalProperties": false,
+      "description": "The row's primary key: UUIDv5(dataset_id, entity, seed, row key).",
+      "properties": {
+        "op": {
+          "const": "row_id",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "RowId",
+      "type": "object"
+    },
+    "Rows": {
+      "additionalProperties": false,
+      "properties": {
+        "per_anchor": {
+          "const": "zero_or_one",
+          "default": "zero_or_one",
+          "title": "Per Anchor",
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "all": "#/$defs/AllOf",
+                  "anchor": "#/$defs/AnchorField",
+                  "any": "#/$defs/AnyOf",
+                  "bernoulli": "#/$defs/Bernoulli",
+                  "choice": "#/$defs/Choice",
+                  "const": "#/$defs/Const",
+                  "days_before_as_of": "#/$defs/DaysBeforeAsOf",
+                  "if": "#/$defs/IfThen",
+                  "integer": "#/$defs/Integer",
+                  "map": "#/$defs/MapValues",
+                  "not": "#/$defs/Not",
+                  "recipe": "#/$defs/RecipeFlag",
+                  "row_id": "#/$defs/RowId"
+                },
+                "propertyName": "op"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/Const"
+                },
+                {
+                  "$ref": "#/$defs/AnchorField"
+                },
+                {
+                  "$ref": "#/$defs/RecipeFlag"
+                },
+                {
+                  "$ref": "#/$defs/Choice"
+                },
+                {
+                  "$ref": "#/$defs/Bernoulli"
+                },
+                {
+                  "$ref": "#/$defs/Integer"
+                },
+                {
+                  "$ref": "#/$defs/DaysBeforeAsOf"
+                },
+                {
+                  "$ref": "#/$defs/MapValues"
+                },
+                {
+                  "$ref": "#/$defs/AnyOf"
+                },
+                {
+                  "$ref": "#/$defs/AllOf"
+                },
+                {
+                  "$ref": "#/$defs/Not"
+                },
+                {
+                  "$ref": "#/$defs/IfThen"
+                },
+                {
+                  "$ref": "#/$defs/RowId"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "anchor rows that get a row (all when omitted)",
+          "title": "When"
+        }
+      },
+      "title": "Rows",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A capability pack. Phase 0 packs carry one entity.",
+  "properties": {
+    "id": {
+      "pattern": "^entity\\.[a-z][a-z0-9_]*$",
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Version",
+      "type": "string"
+    },
+    "kind": {
+      "const": "entity",
+      "default": "entity",
+      "title": "Kind",
+      "type": "string"
+    },
+    "core": {
+      "default": false,
+      "description": "part of the built-in catalog (may use the anchor's random streams)",
+      "title": "Core",
+      "type": "boolean"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "entity": {
+      "$ref": "#/$defs/EntitySpec"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "entity"
+  ],
+  "title": "Pack",
+  "type": "object"
+}

@@ -1,6 +1,6 @@
 # Agentic capability layer: plan
 
-Status: plan, not built. Owner: factory team. Builds on the engines as of commit `4203e22`.
+Status: **phase 0 done** (§12); phases 1–4 planned. Owner: factory team.
 
 ## 1. Problem
 
@@ -253,3 +253,30 @@ Demo targets are today's known gaps: **MBP, MPA, MRX, PON** (no endpoints yet).
 | Non-determinism | packs are data; LLM outputs stored; replays never call the LLM |
 | Endless fix loops, cost | iteration and cost budget per build; `FAILED` with the diagnosis |
 | Concurrent builds of the same capability | deduplication by gap signature; one build, many waiters |
+
+## 12. Progress
+
+### Phase 0 — done
+
+| Delivered | Where |
+|---|---|
+| Pack format (Pydantic): `Pack`, `EntitySpec`, `Column`, `Rows`, 13 building blocks (`const`, `anchor`, `recipe`, `choice`, `bernoulli`, `integer`, `days_before_as_of`, `map`, `any`, `all`, `not`, `if`, `row_id`), validation with reasons, canonical `digest()` | `src/factory/data_engine/packs/model.py` |
+| Generic entity generator: `AnchorFrame` (anchor rows of a shard) and an evaluator; rows select first, then columns; P-01 stamps and scenario tags inherited | `src/factory/data_engine/packs/engine.py` |
+| Core pack loader; `sdoh_indicator` now generated from `packs/core/sdoh_indicator.yaml` — its coded writer was removed from s4 | `src/factory/data_engine/packs/`, `stages/s4_members.py` |
+| Skill v0.1: `SKILL.md`, generated `pack-schema.json` and `generators.md`, the core pack as an example | `skills/healthcare-capability-builder/`, `scripts/build_skill_refs.py` |
+| Regression snapshot tool (gate 4): S1, S1 with member scenarios, S2–S4; counts, checksums, rules, contract tests | `scripts/regression_snapshot.py` |
+
+**Acceptance.** Identical output: the regression snapshot before and after the switch matches for all five
+scenario runs (every checksum and count, rules, all contract tests). `tests/test_packs.py` also compares the pack
+row by row with the former coded generator (kept in the test as the reference) at three seeds, shard counts and
+LOB mixes, including the transport-need scenarios; validates rejection reasons; and fails when the skill's
+generated references are out of date.
+
+**Decisions taken in phase 0**
+
+- `random_stream: anchor` lets a core pack draw from the anchor's row streams with the draw names a former coded
+  generator used — needed for identical output. Non-core packs must use `own` (independent streams), so a
+  generated pack can never correlate with or disturb core data.
+- Pack YAML ships as package data (`pyproject.toml`), so the installed package and the Docker image carry it.
+- Phase 0 supports member-anchored entities with zero or one row per member; more rows per anchor (key slots),
+  other anchors, rules, recipes and API parts are phase 1.

@@ -1,0 +1,55 @@
+# SDOH screening results, one row per screened member (stage s4, member-anchored).
+# Core pack: it replaced the coded generator in s4 and reproduces its rows exactly, so it draws from the member's
+# own random streams (random_stream: anchor) with the draw names the coded version used.
+id: entity.sdoh_indicator
+version: 1.0.0
+kind: entity
+core: true
+description: >-
+  Social determinants of health screening. 60% of members are screened; members whose scenario recipe has a
+  transport need (MBN-03, MAS-02) are always screened with a positive TRANSPORT result.
+entity:
+  name: sdoh_indicator
+  anchor: member
+  primary_key: indicator_id
+  random_stream: anchor
+  rows:
+    per_anchor: zero_or_one
+    when:
+      op: any
+      of:
+        - {op: bernoulli, draw: screened, p: 0.6}
+        - {op: recipe, flag: transport_need}
+  columns:
+    - name: indicator_id
+      type: string
+      gen: {op: row_id}
+    - name: member_id
+      type: string
+      gen: {op: anchor, field: member_id}
+    - name: domain
+      type: string
+      gen:
+        op: if
+        cond: {op: recipe, flag: transport_need}
+        then: {op: const, value: TRANSPORT}
+        else: {op: choice, draw: sdoh_domain, options: [FOOD, HOUSING, TRANSPORT, UTILITIES, SAFETY, ISOLATION]}
+    - name: positive
+      type: bool
+      description: positive screen; Medicaid members screen positive more often
+      gen:
+        op: any
+        of:
+          - op: bernoulli
+            draw: sdoh_pos
+            p: {op: map, of: {op: anchor, field: lob}, values: {MEDICAID_MCO: 0.40}, default: 0.18}
+          - {op: recipe, flag: transport_need}
+    - name: screened_dt
+      type: date
+      gen: {op: days_before_as_of, draw: screened_dt, min_days: 10, max_days: 300}
+    - name: source
+      type: string
+      gen: {op: choice, draw: sdoh_src, options: [SCREENER, CLAIMS_Z_CODE, SELF_REPORT]}
+    - name: referral_status
+      type: string
+      gen: {op: choice, draw: sdoh_ref, options: [NONE, SENT, CONNECTED], weights: [60, 25, 15]}

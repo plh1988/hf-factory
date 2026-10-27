@@ -9,7 +9,7 @@ All data is synthetic. Infrastructure target is GCP; locally everything runs in 
 
 ![Architecture: REST control plane, Data Engine s3-s7, API Engine s8, ports and adapters, runtimes](docs/architecture.svg)
 
-Design documents: [Data Engine](docs/data-engine-design.md) · [API Engine](docs/api-engine-design.md) · [Agentic capability layer (plan)](docs/agentic-capability-layer.md) · Live demo: [step-by-step guide](docs/demo-guide.md)
+Design documents: [Data Engine](docs/data-engine-design.md) · [API Engine](docs/api-engine-design.md) · [Agentic capability layer (plan, phase 0 done)](docs/agentic-capability-layer.md) · Live demo: [step-by-step guide](docs/demo-guide.md)
 
 ## Quick start (Windows)
 
